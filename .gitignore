@@ -1,0 +1,28 @@
+# ===========================================================================
+# Segredos e ambiente — NUNCA versionar
+# ===========================================================================
+.env
+panel/secrets.env
+*.pfx
+
+# Dados de runtime do servidor RustDesk (gerados no 1º start do Docker).
+# Contém a CHAVE PRIVADA do servidor (data/id_ed25519) — vazamento crítico.
+/data/
+
+# Chaves de deploy / SSH
+/github_ssh_key/
+
+# ===========================================================================
+# Marca/identidade específicas do deploy (cada um coloca a sua)
+# ===========================================================================
+/brand/*.svg
+/brand/*.png
+/logo1x1/*.svg
+/logo1x1/*.png
+vertical.svg
+vertical4.png
+
+# Instaladores/binários compilados do cliente (gerados pelo build do fork)
+/panel/public/dist/
+
+# Obs.: brand_suporte/ é mantido no repositório (ícones genéricos de exemplo).

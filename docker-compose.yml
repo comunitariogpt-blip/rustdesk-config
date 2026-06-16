@@ -1,0 +1,43 @@
+# RustDesk self-hosted server (OSS)
+# hbbs = ID/Rendezvous server | hbbr = Relay server
+# Usamos network_mode: host para que o hbbs enxergue o IP real dos clientes
+# (melhora hole-punching/NAT e conexao direta P2P). Em modo host, a secao
+# "ports" abaixo e apenas informativa (documentacao das portas usadas).
+#
+# Portas expostas ao publico:
+#   21115/tcp        hbbs - NAT type test
+#   21116/tcp+udp    hbbs - registro de ID, heartbeat e hole punching
+#   21117/tcp        hbbr - relay
+#   21118/tcp        hbbs - suporte ao web client
+#   21119/tcp        hbbr - suporte ao web client
+
+services:
+  hbbs:
+    container_name: hbbs
+    image: rustdesk/rustdesk-server:latest
+    command: hbbs
+    network_mode: "host"
+    volumes:
+      - ./data:/root
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+    # ports informativos (ignorados em network_mode host):
+    ports:
+      - 21115:21115
+      - 21116:21116
+      - 21116:21116/udp
+      - 21118:21118
+
+  hbbr:
+    container_name: hbbr
+    image: rustdesk/rustdesk-server:latest
+    command: hbbr
+    network_mode: "host"
+    volumes:
+      - ./data:/root
+    restart: unless-stopped
+    # ports informativos (ignorados em network_mode host):
+    ports:
+      - 21117:21117
+      - 21119:21119

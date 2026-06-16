@@ -1,0 +1,3 @@
+# Defesa em profundidade: bloqueia qualquer acesso web a esta pasta
+# (dados/chaves do RustDesk nao devem ser servidos pelo Apache).
+Require all denied

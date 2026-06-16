@@ -1,0 +1,21 @@
+# Front controller routing
+RewriteEngine On
+
+# Pass HTTP Authorization header through to PHP (Bearer tokens)
+CGIPassAuth On
+<IfModule mod_setenvif.c>
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
+# Serve existing files/dirs (assets) directly
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Everything else -> front controller
+RewriteRule ^ index.php [L]
+
+# Never serve dotfiles / sensitive files
+<FilesMatch "^\.|\.env$|\.sql$">
+  Require all denied
+</FilesMatch>
