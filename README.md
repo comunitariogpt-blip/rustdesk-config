@@ -8,8 +8,10 @@ depender da infraestrutura pública da RustDesk:
 - **Painel de gestão** em PHP (`panel/`) — dashboard web para administrar
   operadores, dispositivos, sessões e auditoria. Também expõe a API que os apps
   clientes usam para login/política.
-- **Cliente RustDesk customizado** — um *fork* do RustDesk com a sua logo e o seu
-  domínio embutidos, compilado via **GitHub Actions → Release**.
+- **Cliente RustDesk customizado** — o fork
+  [**comunitariogpt-blip/rustdesk**](https://github.com/comunitariogpt-blip/rustdesk),
+  com a sua logo e o seu domínio embutidos, compilado via
+  **GitHub Actions → Release** (veja a [seção 4.2](#42-cliente-customizado-recompilar-o-fork)).
 
 ```text
 ┌─────────────┐   21115-21119    ┌──────────────────────────┐
@@ -96,7 +98,9 @@ docker compose up -d
 
 ### 1.3 Obter os dados de conexão dos clientes
 
-Configure nos apps clientes:
+Se você distribuir o [cliente customizado](#42-cliente-customizado-recompilar-o-fork),
+estes valores já saem **embutidos no executável** e o usuário final não configura
+nada. Para configurar manualmente um RustDesk padrão (ou para teste):
 
 | Campo        | Valor                                                          |
 |--------------|----------------------------------------------------------------|
@@ -315,29 +319,50 @@ A marca aparece em **dois lugares**: o **painel web** (texto/cor) e o **app clie
 - **Favicon (opcional):** coloque um `favicon.ico` em `panel/public/` e referencie-o
   no `<head>` do layout em `panel/src/admin.php`.
 
-### 4.2 Logo do app cliente (recompilar o fork)
+### 4.2 Cliente customizado (recompilar o fork)
 
-O cliente RustDesk tem a logo e o domínio **compilados dentro do executável** — não
-dá para trocar sem recompilar. O processo:
+O cliente é compilado a partir do fork
+[**comunitariogpt-blip/rustdesk**](https://github.com/comunitariogpt-blip/rustdesk).
+A logo e o endereço do servidor ficam **compilados dentro do executável** — não
+dá para trocar sem recompilar. Guia completo no próprio fork:
+[`docs/CUSTOM-SERVER-PTBR.md`](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md).
+Resumo do processo:
 
-1. **Tenha um fork** do RustDesk (o cliente é buildado a partir dele via
-   **GitHub Actions → Release**).
-2. **Substitua os ícones** pelos seus, nos mesmos nomes/tamanhos que estão em
-   [`brand_suporte/`](brand_suporte/) (use estes como referência de formato):
+1. **Faça um fork** de
+   [comunitariogpt-blip/rustdesk](https://github.com/comunitariogpt-blip/rustdesk)
+   na sua conta do GitHub (é dele que o GitHub Actions gera os instaladores).
+2. **Configure o seu servidor em um único arquivo**: edite o
+   [`custom.env`](https://github.com/comunitariogpt-blip/rustdesk/blob/master/custom.env)
+   na raiz do fork com os valores desta stack:
+
+   ```ini
+   RENDEZVOUS_SERVER=rd.exemplo.com                    # IP/domínio do hbbs (seção 1)
+   RS_PUB_KEY=<conteúdo de data/id_ed25519.pub>        # chave pública (seção 1.3)
+   API_SERVER=https://rd.exemplo.com                   # URL deste painel (seção 3)
+   ```
+
+   O build aplica esses valores automaticamente em todas as plataformas
+   (Windows, Linux, macOS, Android, iOS) — não é preciso editar código.
+3. **Substitua os ícones** pelos seus, nos mesmos nomes/tamanhos que estão em
+   [`brand_suporte/`](brand_suporte/) (use estes como referência de formato),
+   dentro de `res/` no fork (e `flutter/android/.../mipmap-*` para Android):
    - Windows: `icon.ico`, `tray-icon.ico`
    - PNGs multi-resolução: `icon_16.png` … `icon_512.png`, `icon_128x128@2x.png`
    - macOS: `AppIcon.icns`, `mac-tray-*.png`
    - Android: `android/mipmap-*/ic_launcher*.png`
-3. **Configure o domínio embutido** apontando para o seu painel (o mesmo valor de
-   `API_SERVER_URL` / o IP do ID Server), conforme o processo de *rebranding* do
-   RustDesk (consulte a [documentação oficial de build do RustDesk](https://rustdesk.com/docs/en/dev/build/)).
-4. **Dispare o workflow** de Release no GitHub Actions do fork e **baixe os
-   instaladores** gerados.
+4. **Dispare o build**: commit + push das alterações e depois envie uma tag
+   (ex.: `git tag v1.4.7-1 && git push origin v1.4.7-1`) **ou** use
+   **Actions → Flutter Tag Build → Run workflow**. Ao final, **baixe os
+   instaladores** na aba **Releases** do fork.
 5. **Publique os instaladores** em `panel/public/dist/` (esse diretório é ignorado
    pelo Git; é de onde o painel disponibiliza os downloads).
 
 > Os ícones em `brand_suporte/` neste repositório são **genéricos de exemplo** —
 > use-os como gabarito de tamanhos e substitua pelos da sua marca.
+
+> **Teste rápido sem recompilar (Windows):** renomeie o instalador para
+> `rustdesk-host=SEU_IP,key=SUA_CHAVE_PUBLICA.exe` — o RustDesk lê a
+> configuração do nome do arquivo. Não funciona se a chave contiver `/`.
 
 ---
 
