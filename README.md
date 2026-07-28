@@ -350,16 +350,17 @@ Resumo do processo:
    - PNGs multi-resolução: `icon_16.png` … `icon_512.png`, `icon_128x128@2x.png`
    - macOS: `AppIcon.icns`, `mac-tray-*.png`
    - Android: `android/mipmap-*/ic_launcher*.png`
-4. **Libere a escrita do GitHub Actions no fork** (uma única vez, obrigatório em
-   repositórios novos): **Settings → Actions → General → Workflow permissions →
-   "Read and write permissions" → Save**. Sem isso a compilação roda inteira e
-   falha só no final, em todos os passos `Publish ...`.
-5. **Dispare o build**: commit + push das alterações e depois envie uma tag
+4. **Dispare o build**: commit + push das alterações e depois envie uma tag
    (ex.: `git tag v1.4.7-1 && git push origin v1.4.7-1`) **ou** use
    **Actions → Flutter Tag Build → Run workflow**. Ao final, **baixe os
    instaladores** na aba **Releases** do fork.
-6. **Publique os instaladores** em `panel/public/dist/` (esse diretório é ignorado
+5. **Publique os instaladores** em `panel/public/dist/` (esse diretório é ignorado
    pelo Git; é de onde o painel disponibiliza os downloads).
+
+> **Se todos os passos `Publish ...` falharem** no GitHub Actions (a compilação
+> passa e só a publicação quebra), o `GITHUB_TOKEN` do fork está sem permissão de
+> escrita — veja a seção *Problemas comuns no build* do
+> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#7-problemas-comuns-no-build).
 
 > Os ícones em `brand_suporte/` neste repositório são **genéricos de exemplo** —
 > use-os como gabarito de tamanhos e substitua pelos da sua marca.
