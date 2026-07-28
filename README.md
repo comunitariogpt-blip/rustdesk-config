@@ -298,6 +298,13 @@ usa o `secrets.env` para acessar o banco, então configure-o antes (seção 3.2)
 Abra `https://rd.exemplo.com` (ou `http://...` em teste), faça login com o admin
 criado e o painel estará no ar com a sua marca.
 
+> **Exigir login dos operadores:** em **Configurações → Exigir login** você
+> define se o app cliente obriga o operador a autenticar (com os usuários da
+> tela *Operadores*) antes de qualquer conexão. A opção nasce **desligada**;
+> ao ligar, a política chega aos clientes já abertos em ~15 s, sem recompilar.
+> Requer o [cliente customizado](#42-cliente-customizado-recompilar-o-fork)
+> com `API_SERVER` preenchido.
+
 ---
 
 ## 4. Sua própria logo / personalização
@@ -360,7 +367,7 @@ Resumo do processo:
 > **Se todos os passos `Publish ...` falharem** no GitHub Actions (a compilação
 > passa e só a publicação quebra), o `GITHUB_TOKEN` do fork está sem permissão de
 > escrita — veja a seção *Problemas comuns no build* do
-> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#7-problemas-comuns-no-build).
+> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#8-problemas-comuns-no-build).
 
 > Os ícones em `brand_suporte/` neste repositório são **genéricos de exemplo** —
 > use-os como gabarito de tamanhos e substitua pelos da sua marca.
