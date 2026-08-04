@@ -361,13 +361,20 @@ Resumo do processo:
    (ex.: `git tag v1.4.7-1 && git push origin v1.4.7-1`) **ou** use
    **Actions → Flutter Tag Build → Run workflow**. Ao final, **baixe os
    instaladores** na aba **Releases** do fork.
-5. **Publique os instaladores** em `panel/public/dist/` (esse diretório é ignorado
+5. **Publique os executáveis** em `panel/public/dist/` (esse diretório é ignorado
    pelo Git; é de onde o painel disponibiliza os downloads).
+
+> **O release traz dois executáveis portable** (sem instalação), gerados no
+> mesmo build:
+> `rustdesk-<versão>-x86_64-operador.exe` — para quem presta o suporte (campo de
+> ID remoto + login, não expõe o próprio ID) — e
+> `rustdesk-<versão>-x86_64-cliente.exe` — para quem recebe o suporte (mostra
+> apenas ID e senha, sem login e sem campo de conexão).
 
 > **Se todos os passos `Publish ...` falharem** no GitHub Actions (a compilação
 > passa e só a publicação quebra), o `GITHUB_TOKEN` do fork está sem permissão de
 > escrita — veja a seção *Problemas comuns no build* do
-> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#8-problemas-comuns-no-build).
+> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#9-problemas-comuns-no-build).
 
 > Os ícones em `brand_suporte/` neste repositório são **genéricos de exemplo** —
 > use-os como gabarito de tamanhos e substitua pelos da sua marca.
