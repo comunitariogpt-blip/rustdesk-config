@@ -357,10 +357,10 @@ Resumo do processo:
    - PNGs multi-resolução: `icon_16.png` … `icon_512.png`, `icon_128x128@2x.png`
    - macOS: `AppIcon.icns`, `mac-tray-*.png`
    - Android: `android/mipmap-*/ic_launcher*.png`
-4. **Dispare o build**: commit + push das alterações e depois envie uma tag
-   (ex.: `git tag v1.4.7-1 && git push origin v1.4.7-1`) **ou** use
-   **Actions → Flutter Tag Build → Run workflow**. Ao final, **baixe os
-   instaladores** na aba **Releases** do fork.
+4. **Dispare o build**: commit + push das alterações e depois use
+   **Actions → Flutter Tag Build → Run workflow**, informando o nome da tag
+   (ex.: `v1.4.7-1`). Ao final, **baixe os executáveis** na aba **Releases** do
+   fork. Nenhum workflow do fork roda sozinho — todos são manuais.
 5. **Publique os executáveis** em `panel/public/dist/` (esse diretório é ignorado
    pelo Git; é de onde o painel disponibiliza os downloads).
 
