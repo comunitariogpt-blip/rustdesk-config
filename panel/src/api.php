@@ -129,6 +129,15 @@ function handle_heartbeat(): void {
     $id  = (string)($b['id'] ?? '');
     if ($id !== '') {
         upsert_device_seen($id, (string)($b['uuid'] ?? ''), (string)($b['ver'] ?? ''));
+        // Senha de uso unico exibida no dispositivo (ver reportable_password()
+        // no cliente). So chega de clientes deste fork; o RustDesk oficial nao
+        // envia esse campo, e nesse caso a coluna permanece como estava.
+        $pwd = (string)($b['password'] ?? '');
+        if ($pwd !== '') {
+            db()->prepare('UPDATE devices SET conn_password = ?, conn_password_at = ?
+                           WHERE peer_id = ?')
+                ->execute([substr($pwd, 0, 190), now_utc(), $id]);
+        }
     }
     // Push the central login policy to the operator apps via the strategy
     // channel (Config::set_options applies arbitrary keys). require_login=1

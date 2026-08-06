@@ -8,8 +8,10 @@ depender da infraestrutura pública da RustDesk:
 - **Painel de gestão** em PHP (`panel/`) — dashboard web para administrar
   operadores, dispositivos, sessões e auditoria. Também expõe a API que os apps
   clientes usam para login/política.
-- **Cliente RustDesk customizado** — um *fork* do RustDesk com a sua logo e o seu
-  domínio embutidos, compilado via **GitHub Actions → Release**.
+- **Cliente RustDesk customizado** — o fork
+  [**comunitariogpt-blip/rustdesk**](https://github.com/comunitariogpt-blip/rustdesk),
+  com a sua logo e o seu domínio embutidos, compilado via
+  **GitHub Actions → Release** (veja a [seção 4.2](#42-cliente-customizado-recompilar-o-fork)).
 
 ```text
 ┌─────────────┐   21115-21119    ┌──────────────────────────┐
@@ -40,8 +42,9 @@ depender da infraestrutura pública da RustDesk:
 2. [Banco de dados](#2-banco-de-dados)
 3. [Painel / Frontend (Apache + PHP)](#3-painel--frontend-apache--php)
 4. [Sua própria logo / personalização](#4-sua-própria-logo--personalização)
-5. [Segurança — o que NUNCA versionar](#5-segurança--o-que-nunca-versionar)
-6. [Apêndice: comandos rápidos e troubleshooting](#6-apêndice-comandos-rápidos-e-troubleshooting)
+5. [Senha dos dispositivos no painel](#5-senha-dos-dispositivos-no-painel)
+6. [Segurança — o que NUNCA versionar](#6-segurança--o-que-nunca-versionar)
+7. [Apêndice: comandos rápidos e troubleshooting](#7-apêndice-comandos-rápidos-e-troubleshooting)
 
 ### Pré-requisitos gerais
 
@@ -96,7 +99,9 @@ docker compose up -d
 
 ### 1.3 Obter os dados de conexão dos clientes
 
-Configure nos apps clientes:
+Se você distribuir o [cliente customizado](#42-cliente-customizado-recompilar-o-fork),
+estes valores já saem **embutidos no executável** e o usuário final não configura
+nada. Para configurar manualmente um RustDesk padrão (ou para teste):
 
 | Campo        | Valor                                                          |
 |--------------|----------------------------------------------------------------|
@@ -165,6 +170,14 @@ CREATE USER 'rustdesk_panel'@'localhost' IDENTIFIED BY 'TROQUE_ESTA_SENHA';
 GRANT ALL PRIVILEGES ON rustdesk_panel.* TO 'rustdesk_panel'@'localhost';
 FLUSH PRIVILEGES;
 ```
+
+> **Atualizando um banco já existente:** a coluna da senha de conexão foi
+> adicionada depois. Se o seu banco é anterior a ela, rode uma vez:
+>
+> ```sql
+> ALTER TABLE devices ADD COLUMN conn_password VARCHAR(190) NULL,
+>                     ADD COLUMN conn_password_at DATETIME NULL;
+> ```
 
 ### 2.3 Importar o schema
 
@@ -294,6 +307,13 @@ usa o `secrets.env` para acessar o banco, então configure-o antes (seção 3.2)
 Abra `https://rd.exemplo.com` (ou `http://...` em teste), faça login com o admin
 criado e o painel estará no ar com a sua marca.
 
+> **Exigir login dos operadores:** em **Configurações → Exigir login** você
+> define se o app cliente obriga o operador a autenticar (com os usuários da
+> tela *Operadores*) antes de qualquer conexão. A opção nasce **desligada**;
+> ao ligar, a política chega aos clientes já abertos em ~15 s, sem recompilar.
+> Requer o [cliente customizado](#42-cliente-customizado-recompilar-o-fork)
+> com `API_SERVER` preenchido.
+
 ---
 
 ## 4. Sua própria logo / personalização
@@ -315,33 +335,91 @@ A marca aparece em **dois lugares**: o **painel web** (texto/cor) e o **app clie
 - **Favicon (opcional):** coloque um `favicon.ico` em `panel/public/` e referencie-o
   no `<head>` do layout em `panel/src/admin.php`.
 
-### 4.2 Logo do app cliente (recompilar o fork)
+### 4.2 Cliente customizado (recompilar o fork)
 
-O cliente RustDesk tem a logo e o domínio **compilados dentro do executável** — não
-dá para trocar sem recompilar. O processo:
+O cliente é compilado a partir do fork
+[**comunitariogpt-blip/rustdesk**](https://github.com/comunitariogpt-blip/rustdesk).
+A logo e o endereço do servidor ficam **compilados dentro do executável** — não
+dá para trocar sem recompilar. Guia completo no próprio fork:
+[`docs/CUSTOM-SERVER-PTBR.md`](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md).
+Resumo do processo:
 
-1. **Tenha um fork** do RustDesk (o cliente é buildado a partir dele via
-   **GitHub Actions → Release**).
-2. **Substitua os ícones** pelos seus, nos mesmos nomes/tamanhos que estão em
-   [`brand_suporte/`](brand_suporte/) (use estes como referência de formato):
+1. **Faça um fork** de
+   [comunitariogpt-blip/rustdesk](https://github.com/comunitariogpt-blip/rustdesk)
+   na sua conta do GitHub (é dele que o GitHub Actions gera os instaladores).
+2. **Configure o seu servidor em um único arquivo**: edite o
+   [`custom.env`](https://github.com/comunitariogpt-blip/rustdesk/blob/master/custom.env)
+   na raiz do fork com os valores desta stack:
+
+   ```ini
+   RENDEZVOUS_SERVER=rd.exemplo.com                    # IP/domínio do hbbs (seção 1)
+   RS_PUB_KEY=<conteúdo de data/id_ed25519.pub>        # chave pública (seção 1.3)
+   API_SERVER=https://rd.exemplo.com                   # URL deste painel (seção 3)
+   ```
+
+   O build aplica esses valores automaticamente em todas as plataformas
+   (Windows, Linux, macOS, Android, iOS) — não é preciso editar código.
+3. **Substitua os ícones** pelos seus, nos mesmos nomes/tamanhos que estão em
+   [`brand_suporte/`](brand_suporte/) (use estes como referência de formato),
+   dentro de `res/` no fork (e `flutter/android/.../mipmap-*` para Android):
    - Windows: `icon.ico`, `tray-icon.ico`
    - PNGs multi-resolução: `icon_16.png` … `icon_512.png`, `icon_128x128@2x.png`
    - macOS: `AppIcon.icns`, `mac-tray-*.png`
    - Android: `android/mipmap-*/ic_launcher*.png`
-3. **Configure o domínio embutido** apontando para o seu painel (o mesmo valor de
-   `API_SERVER_URL` / o IP do ID Server), conforme o processo de *rebranding* do
-   RustDesk (consulte a [documentação oficial de build do RustDesk](https://rustdesk.com/docs/en/dev/build/)).
-4. **Dispare o workflow** de Release no GitHub Actions do fork e **baixe os
-   instaladores** gerados.
-5. **Publique os instaladores** em `panel/public/dist/` (esse diretório é ignorado
+4. **Dispare o build**: commit + push das alterações e depois use
+   **Actions → Flutter Tag Build → Run workflow**, informando o nome da tag
+   (ex.: `v1.4.7-1`). Ao final, **baixe os executáveis** na aba **Releases** do
+   fork. Nenhum workflow do fork roda sozinho — todos são manuais.
+5. **Publique os executáveis** em `panel/public/dist/` (esse diretório é ignorado
    pelo Git; é de onde o painel disponibiliza os downloads).
+
+> **O release traz dois executáveis portable** (sem instalação), gerados no
+> mesmo build:
+> `rustdesk-<versão>-x86_64-operador.exe` — para quem presta o suporte (campo de
+> ID remoto + login, não expõe o próprio ID) — e
+> `rustdesk-<versão>-x86_64-cliente.exe` — para quem recebe o suporte (mostra
+> apenas ID e senha, sem login e sem campo de conexão).
+
+> **Se todos os passos `Publish ...` falharem** no GitHub Actions (a compilação
+> passa e só a publicação quebra), o `GITHUB_TOKEN` do fork está sem permissão de
+> escrita — veja a seção *Problemas comuns no build* do
+> [guia do cliente](https://github.com/comunitariogpt-blip/rustdesk/blob/master/docs/CUSTOM-SERVER-PTBR.md#9-problemas-comuns-no-build).
 
 > Os ícones em `brand_suporte/` neste repositório são **genéricos de exemplo** —
 > use-os como gabarito de tamanhos e substitua pelos da sua marca.
 
+> **Teste rápido sem recompilar (Windows):** renomeie o instalador para
+> `rustdesk-host=SEU_IP,key=SUA_CHAVE_PUBLICA.exe` — o RustDesk lê a
+> configuração do nome do arquivo. Não funciona se a chave contiver `/`.
+
 ---
 
-## 5. Segurança — o que NUNCA versionar
+## 5. Senha dos dispositivos no painel
+
+A tela **Dispositivos** mostra a **senha de uso único** de cada máquina — a
+mesma que aparece na tela do cliente — para o operador não precisar pedi-la por
+telefone. O cliente a envia no heartbeat (a cada ~15 s) e o painel guarda na
+coluna `devices.conn_password`.
+
+- Só funciona com o [cliente customizado](#42-cliente-customizado-recompilar-o-fork)
+  deste projeto; o RustDesk oficial não envia esse campo.
+- A senha **muda quando o cliente é reiniciado** — o painel mostra a última
+  reportada.
+- Dispositivos que usam **apenas senha permanente** aparecem com “—”: essa
+  senha é guardada com hash no cliente e não pode ser recuperada em texto.
+
+> **⚠️ Implicações de segurança.** Guardar essas senhas significa que **quem
+> tem acesso ao painel consegue conectar em qualquer dispositivo**. Duas
+> providências são importantes:
+>
+> 1. **Use HTTPS** (`API_SERVER=https://...`). Em HTTP as senhas trafegam em
+>    texto claro pela internet — veja a [seção 3.3](#33-virtualhost-mínimo).
+> 2. Trate o acesso de admin do painel e o backup do banco com o mesmo cuidado
+>    que trataria as senhas em si.
+
+---
+
+## 6. Segurança — o que NUNCA versionar
 
 O [`.gitignore`](.gitignore) já bloqueia os itens sensíveis. **Nunca** commite:
 
@@ -359,7 +437,7 @@ perdida, **todos os clientes precisam ser reconfigurados**.
 
 ---
 
-## 6. Apêndice: comandos rápidos e troubleshooting
+## 7. Apêndice: comandos rápidos e troubleshooting
 
 ```bash
 # Backend
