@@ -42,8 +42,9 @@ depender da infraestrutura pública da RustDesk:
 2. [Banco de dados](#2-banco-de-dados)
 3. [Painel / Frontend (Apache + PHP)](#3-painel--frontend-apache--php)
 4. [Sua própria logo / personalização](#4-sua-própria-logo--personalização)
-5. [Segurança — o que NUNCA versionar](#5-segurança--o-que-nunca-versionar)
-6. [Apêndice: comandos rápidos e troubleshooting](#6-apêndice-comandos-rápidos-e-troubleshooting)
+5. [Senha dos dispositivos no painel](#5-senha-dos-dispositivos-no-painel)
+6. [Segurança — o que NUNCA versionar](#6-segurança--o-que-nunca-versionar)
+7. [Apêndice: comandos rápidos e troubleshooting](#7-apêndice-comandos-rápidos-e-troubleshooting)
 
 ### Pré-requisitos gerais
 
@@ -169,6 +170,14 @@ CREATE USER 'rustdesk_panel'@'localhost' IDENTIFIED BY 'TROQUE_ESTA_SENHA';
 GRANT ALL PRIVILEGES ON rustdesk_panel.* TO 'rustdesk_panel'@'localhost';
 FLUSH PRIVILEGES;
 ```
+
+> **Atualizando um banco já existente:** a coluna da senha de conexão foi
+> adicionada depois. Se o seu banco é anterior a ela, rode uma vez:
+>
+> ```sql
+> ALTER TABLE devices ADD COLUMN conn_password VARCHAR(190) NULL,
+>                     ADD COLUMN conn_password_at DATETIME NULL;
+> ```
 
 ### 2.3 Importar o schema
 
@@ -385,7 +394,32 @@ Resumo do processo:
 
 ---
 
-## 5. Segurança — o que NUNCA versionar
+## 5. Senha dos dispositivos no painel
+
+A tela **Dispositivos** mostra a **senha de uso único** de cada máquina — a
+mesma que aparece na tela do cliente — para o operador não precisar pedi-la por
+telefone. O cliente a envia no heartbeat (a cada ~15 s) e o painel guarda na
+coluna `devices.conn_password`.
+
+- Só funciona com o [cliente customizado](#42-cliente-customizado-recompilar-o-fork)
+  deste projeto; o RustDesk oficial não envia esse campo.
+- A senha **muda quando o cliente é reiniciado** — o painel mostra a última
+  reportada.
+- Dispositivos que usam **apenas senha permanente** aparecem com “—”: essa
+  senha é guardada com hash no cliente e não pode ser recuperada em texto.
+
+> **⚠️ Implicações de segurança.** Guardar essas senhas significa que **quem
+> tem acesso ao painel consegue conectar em qualquer dispositivo**. Duas
+> providências são importantes:
+>
+> 1. **Use HTTPS** (`API_SERVER=https://...`). Em HTTP as senhas trafegam em
+>    texto claro pela internet — veja a [seção 3.3](#33-virtualhost-mínimo).
+> 2. Trate o acesso de admin do painel e o backup do banco com o mesmo cuidado
+>    que trataria as senhas em si.
+
+---
+
+## 6. Segurança — o que NUNCA versionar
 
 O [`.gitignore`](.gitignore) já bloqueia os itens sensíveis. **Nunca** commite:
 
@@ -403,7 +437,7 @@ perdida, **todos os clientes precisam ser reconfigurados**.
 
 ---
 
-## 6. Apêndice: comandos rápidos e troubleshooting
+## 7. Apêndice: comandos rápidos e troubleshooting
 
 ```bash
 # Backend

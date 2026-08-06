@@ -45,10 +45,19 @@ CREATE TABLE IF NOT EXISTS devices (
   uuid VARCHAR(190) NULL, hostname VARCHAR(190) NULL, username VARCHAR(190) NULL,
   os VARCHAR(190) NULL, cpu VARCHAR(190) NULL, memory VARCHAR(64) NULL,
   version VARCHAR(64) NULL, last_ip VARCHAR(64) NULL, sysinfo_ver VARCHAR(64) NULL,
+  -- Senha de uso unico exibida na tela do dispositivo, reportada no heartbeat
+  -- para o operador nao precisar pedi-la por telefone. Guardada em texto claro
+  -- porque precisa ser exibida; rotaciona a cada reinicio do cliente.
+  conn_password VARCHAR(190) NULL, conn_password_at DATETIME NULL,
   first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen DATETIME NULL,
   online TINYINT NOT NULL DEFAULT 0,
   INDEX idx_device_online (online), INDEX idx_device_lastseen (last_seen)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migracao para bancos criados antes desta coluna existir (rode uma vez;
+-- se ja existir, o MySQL acusa erro e pode ser ignorado):
+--   ALTER TABLE devices ADD COLUMN conn_password VARCHAR(190) NULL,
+--                       ADD COLUMN conn_password_at DATETIME NULL;
 
 CREATE TABLE IF NOT EXISTS connections (
   id INT AUTO_INCREMENT PRIMARY KEY,

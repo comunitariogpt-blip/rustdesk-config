@@ -272,7 +272,7 @@ function page_devices(array $admin): void {
     ob_start(); ?>
     <div class="card"><h3>Dispositivos (<?= count($rows) ?>)</h3>
     <table class="tbl"><thead><tr>
-      <th>ID</th><th>Status</th><th>Host</th><th>Usuário</th><th>SO</th><th>Versão</th><th>IP</th><th>Visto por último</th>
+      <th>ID</th><th>Status</th><th>Senha</th><th>Host</th><th>Usuário</th><th>SO</th><th>Versão</th><th>IP</th><th>Visto por último</th>
     </tr></thead><tbody>
     <?php foreach ($rows as $d): ?>
       <tr>
@@ -280,6 +280,14 @@ function page_devices(array $admin): void {
         <td><?= ((int)$d['is_online'])
               ? '<span class="badge on">online</span>'
               : '<span class="badge off">offline</span>' ?></td>
+        <td class="mono">
+          <?php $pw = (string)($d['conn_password'] ?? ''); if ($pw !== ''): ?>
+            <span class="pw" data-pw="<?= e($pw) ?>">••••••</span>
+            <a href="#" class="pw-toggle" title="Mostrar/ocultar">👁</a>
+          <?php else: ?>
+            <span class="muted">—</span>
+          <?php endif; ?>
+        </td>
         <td><?= e($d['hostname']) ?></td>
         <td><?= e($d['username']) ?></td>
         <td><?= e($d['os']) ?></td>
@@ -287,8 +295,25 @@ function page_devices(array $admin): void {
         <td class="mono"><?= e(clean_ip($d['last_ip'])) ?></td>
         <td><?= e(fmt_dt($d['last_seen'])) ?></td>
       </tr>
-    <?php endforeach; if (!$rows) echo '<tr><td colspan="8" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
-    </tbody></table></div>
+    <?php endforeach; if (!$rows) echo '<tr><td colspan="9" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
+    </tbody></table>
+    <p class="muted" style="margin-top:10px">
+      A senha exibida é a de <strong>uso único</strong> que aparece na tela do
+      dispositivo, reportada a cada heartbeat (~15 s). Ela muda quando o cliente
+      é reiniciado. Dispositivos configurados apenas com senha permanente
+      mostram “—”: essa senha é guardada com hash e não pode ser recuperada.
+    </p></div>
+    <script>
+    document.querySelectorAll('.pw-toggle').forEach(function (a) {
+      a.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var s = a.previousElementSibling;
+        var shown = s.dataset.shown === '1';
+        s.textContent = shown ? '••••••' : s.dataset.pw;
+        s.dataset.shown = shown ? '0' : '1';
+      });
+    });
+    </script>
     <?php
     layout(ob_get_clean(), $admin, 'devices', 'Dispositivos');
 }
