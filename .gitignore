@@ -24,5 +24,6 @@ vertical4.png
 
 # Instaladores/binários compilados do cliente (gerados pelo build do fork)
 /panel/public/dist/
+/panel/public/rdsuporte/
 
 # Obs.: brand_suporte/ é mantido no repositório (ícones genéricos de exemplo).
