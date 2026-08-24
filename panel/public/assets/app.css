@@ -16,6 +16,15 @@ a{color:var(--brand);text-decoration:none}
 .login-card input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 .login-card button{margin-top:18px;width:100%;padding:12px;border:0;border-radius:8px;background:var(--brand);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
 .login-card button:hover{background:var(--brand-d)}
+.pw-field{position:relative}
+.pw-field input{padding-right:42px}
+.login-card .pw-eye{position:absolute;top:0;right:0;width:40px;height:100%;margin:0;padding:0;
+  display:flex;align-items:center;justify-content:center;background:none;border:0;border-radius:0 8px 8px 0;
+  color:var(--muted);cursor:pointer}
+.login-card .pw-eye:hover{background:none;color:var(--brand)}
+.pw-eye svg{width:18px;height:18px}
+.pw-eye .ico-eye-off,.pw-field.show .pw-eye .ico-eye{display:none}
+.pw-field.show .pw-eye .ico-eye-off{display:block}
 .alert{background:#fdecea;color:#b3261e;padding:10px 12px;border-radius:8px;margin:10px 0;font-size:13px}
 .alert.ok{background:#e7f7ee;color:#15803d}
 
