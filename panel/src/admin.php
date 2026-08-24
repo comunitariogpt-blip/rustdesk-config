@@ -20,7 +20,7 @@ function admin_dispatch(string $uri): void {
     switch ($uri) {
         case '/':            page_dashboard($admin);   break;
         case '/operators':   $m === 'POST' ? operator_action($admin) : page_operators($admin); break;
-        case '/devices':     page_devices($admin);     break;
+        case '/devices':     $m === 'POST' ? device_action($admin) : page_devices($admin); break;
         case '/connections': page_connections($admin); break;
         case '/audit':       page_audit($admin);       break;
         case '/settings':    $m === 'POST' ? settings_save($admin) : page_settings($admin); break;
@@ -84,9 +84,11 @@ function do_logout(): void {
 function page_dashboard(array $admin): void {
     $pdo = db();
     $ops   = (int)$pdo->query('SELECT COUNT(*) FROM operators WHERE status=1')->fetchColumn();
-    $devTotal = (int)$pdo->query('SELECT COUNT(*) FROM devices')->fetchColumn();
+    // Dispositivos inativados ficam de fora dos KPIs: eles existem justamente
+    // para tirar PCs antigos da vista.
+    $devTotal = (int)$pdo->query('SELECT COUNT(*) FROM devices WHERE active = 1')->fetchColumn();
     $devOnline = (int)$pdo->query(
-        'SELECT COUNT(*) FROM devices WHERE last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND'
+        'SELECT COUNT(*) FROM devices WHERE active = 1 AND last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND'
     )->fetchColumn();
     $connToday = (int)$pdo->query(
         "SELECT COUNT(*) FROM connections WHERE started_at >= UTC_TIMESTAMP() - INTERVAL 1 DAY"
@@ -264,22 +266,91 @@ function operator_action(array $admin): void {
 // ===========================================================================
 // Devices
 // ===========================================================================
-function page_devices(array $admin): void {
-    $rows = db()->query(
-        'SELECT *, (last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND) AS is_online
-         FROM devices ORDER BY is_online DESC, last_seen DESC'
-    )->fetchAll();
-    ob_start(); ?>
-    <div class="card"><h3>Dispositivos (<?= count($rows) ?>)</h3>
+function page_devices(array $admin, string $flash = ''): void {
+    // Traz a lista inteira (inclusive inativos): a filtragem acontece no
+    // navegador, sem recarregar. Favoritos e ativos primeiro. Apelido e
+    // favorito vem de device_prefs, que e por admin — cada um ve os seus.
+    $st = db()->prepare(
+        'SELECT d.*, p.alias, COALESCE(p.favorite, 0) AS favorite,
+                (d.last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND) AS is_online
+         FROM devices d
+         LEFT JOIN device_prefs p ON p.device_id = d.id AND p.admin_id = ?
+         ORDER BY d.active DESC, favorite DESC, is_online DESC, d.last_seen DESC'
+    );
+    $st->execute([(int)$admin['id']]);
+    $rows = $st->fetchAll();
+    $csrf = csrf_token();
+
+    // Estado inicial dos filtros vindo da URL, para o link ser compartilhavel.
+    // '' = todos; situacao ('sit') vem como 'all' na URL porque o padrao e ativos.
+    $fq  = trim((string)($_GET['q'] ?? ''));
+    $fSt = (string)($_GET['status'] ?? '');
+    $fFv = (string)($_GET['fav'] ?? '');
+    $fSi = (string)($_GET['sit'] ?? '1');
+    if ($fSi === 'all') $fSi = '';
+    if (!in_array($fSt, ['', '0', '1'], true)) $fSt = '';
+    if (!in_array($fFv, ['', '0', '1'], true)) $fFv = '';
+    if (!in_array($fSi, ['', '0', '1'], true)) $fSi = '1';
+
+    ob_start();
+    if ($flash) echo '<div class="alert ok">' . e($flash) . '</div>';
+    ?>
+    <div class="card">
+      <div class="formrow filters">
+        <input id="f-q" value="<?= e($fq) ?>" placeholder="Buscar por ID, nome ou host…" size="28">
+        <select id="f-status">
+          <?php foreach (['' => 'Online e offline', '1' => 'Só online', '0' => 'Só offline'] as $k => $lbl): ?>
+            <?php /* (string)$k: chaves numericas viram int no array PHP */ ?>
+            <option value="<?= $k ?>" <?= (string)$k === $fSt ? 'selected' : '' ?>><?= $lbl ?></option>
+          <?php endforeach; ?>
+        </select>
+        <select id="f-fav">
+          <?php foreach (['' => 'Favoritos e não favoritos', '1' => 'Só favoritos', '0' => 'Só não favoritos'] as $k => $lbl): ?>
+            <option value="<?= $k ?>" <?= (string)$k === $fFv ? 'selected' : '' ?>><?= $lbl ?></option>
+          <?php endforeach; ?>
+        </select>
+        <select id="f-sit">
+          <?php foreach (['1' => 'Ativos', '0' => 'Inativos', '' => 'Ativos e inativos'] as $k => $lbl): ?>
+            <option value="<?= $k ?>" <?= (string)$k === $fSi ? 'selected' : '' ?>><?= $lbl ?></option>
+          <?php endforeach; ?>
+        </select>
+        <button type="button" id="f-clear">Limpar</button>
+      </div>
+    </div>
+    <div class="card"><h3>Dispositivos (<span id="dev-count"><?= count($rows) ?></span>)</h3>
     <table class="tbl"><thead><tr>
-      <th>ID</th><th>Status</th><th>Senha</th><th>Host</th><th>Usuário</th><th>SO</th><th>Versão</th><th>IP</th><th>Visto por último</th>
-    </tr></thead><tbody>
-    <?php foreach ($rows as $d): ?>
-      <tr>
+      <th></th><th>ID</th><th>Nome</th><th>Status</th><th>Senha</th><th>Host</th><th>Usuário</th><th>SO</th><th>Versão</th><th>IP</th><th>Visto por último</th><th>Ações</th>
+    </tr></thead><tbody id="dev-tbody">
+    <?php foreach ($rows as $d):
+        $act   = (int)$d['active'];
+        $fav   = (int)$d['favorite'];
+        $alias = (string)($d['alias'] ?? '');
+        $label = $alias !== '' ? $alias : (string)$d['peer_id']; ?>
+      <tr<?= $act ? '' : ' class="row-off"' ?>
+          data-search="<?= e(mb_strtolower($d['peer_id'] . ' ' . $alias . ' ' . (string)$d['hostname'])) ?>"
+          data-online="<?= (int)$d['is_online'] ?>" data-fav="<?= $fav ?>" data-active="<?= $act ?>">
+        <td>
+          <form method="post" action="/devices" data-keep>
+            <input type="hidden" name="csrf" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="fav">
+            <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
+            <button class="star<?= $fav ? ' on' : '' ?>" title="<?= $fav ? 'Remover dos favoritos' : 'Marcar como favorito' ?>"><?= $fav ? '★' : '☆' ?></button>
+          </form>
+        </td>
         <td class="mono"><?= e($d['peer_id']) ?></td>
+        <td class="actions">
+          <form method="post" action="/devices" data-keep>
+            <input type="hidden" name="csrf" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="alias">
+            <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
+            <input class="alias" name="alias" value="<?= e($alias) ?>" placeholder="dar um nome…" maxlength="190">
+            <button>Salvar</button>
+          </form>
+        </td>
         <td><?= ((int)$d['is_online'])
               ? '<span class="badge on">online</span>'
-              : '<span class="badge off">offline</span>' ?></td>
+              : '<span class="badge off">offline</span>' ?>
+          <?= $act ? '' : ' <span class="badge off">inativo</span>' ?></td>
         <td class="mono">
           <?php $pw = (string)($d['conn_password'] ?? ''); if ($pw !== ''): ?>
             <span class="pw" data-pw="<?= e($pw) ?>">••••••</span>
@@ -294,14 +365,37 @@ function page_devices(array $admin): void {
         <td><?= e($d['version']) ?></td>
         <td class="mono"><?= e(clean_ip($d['last_ip'])) ?></td>
         <td><?= e(fmt_dt($d['last_seen'])) ?></td>
+        <td class="actions">
+          <form method="post" action="/devices" data-keep>
+            <input type="hidden" name="csrf" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
+            <button><?= $act ? 'Inativar' : 'Reativar' ?></button>
+          </form>
+          <form method="post" action="/devices" data-keep onsubmit="return confirm('Excluir definitivamente o dispositivo <?= e($label) ?>? O histórico de conexões é preservado, mas ele volta a aparecer se o PC mandar heartbeat de novo. Para apenas tirá-lo da lista, use Inativar.')">
+            <input type="hidden" name="csrf" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
+            <button class="danger">Excluir</button>
+          </form>
+        </td>
       </tr>
-    <?php endforeach; if (!$rows) echo '<tr><td colspan="9" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
+    <?php endforeach;
+      if (!$rows) echo '<tr><td colspan="12" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
+      <tr id="no-match" style="display:none"><td colspan="12" class="muted">Nenhum dispositivo corresponde ao filtro.</td></tr>
     </tbody></table>
     <p class="muted" style="margin-top:10px">
       A senha exibida é a de <strong>uso único</strong> que aparece na tela do
       dispositivo, reportada a cada heartbeat (~15 s). Ela muda quando o cliente
       é reiniciado. Dispositivos configurados apenas com senha permanente
       mostram “—”: essa senha é guardada com hash e não pode ser recuperada.
+    </p>
+    <p class="muted">
+      O <strong>nome</strong> e a <strong>estrela</strong> são seus: cada conta do
+      painel tem os próprios, e o que você escrever aqui não muda a lista dos outros.
+      Já <strong>inativar</strong> vale para todo mundo — tira o PC da lista sem
+      apagar nada, e ele continua inativo mesmo que volte a se conectar, até ser
+      reativado aqui.
     </p></div>
     <script>
     document.querySelectorAll('.pw-toggle').forEach(function (a) {
@@ -313,9 +407,105 @@ function page_devices(array $admin): void {
         s.dataset.shown = shown ? '0' : '1';
       });
     });
+
+    (function () {
+      var q  = document.getElementById('f-q'),
+          st = document.getElementById('f-status'),
+          fv = document.getElementById('f-fav'),
+          si = document.getElementById('f-sit'),
+          cnt = document.getElementById('dev-count'),
+          none = document.getElementById('no-match'),
+          rows = [].slice.call(document.querySelectorAll('#dev-tbody tr[data-search]'));
+
+      function apply() {
+        var term = q.value.trim().toLowerCase(), n = 0;
+        rows.forEach(function (r) {
+          var ok = (term === '' || r.dataset.search.indexOf(term) !== -1)
+                && (st.value === '' || st.value === r.dataset.online)
+                && (fv.value === '' || fv.value === r.dataset.fav)
+                && (si.value === '' || si.value === r.dataset.active);
+          r.style.display = ok ? '' : 'none';
+          if (ok) n++;
+        });
+        cnt.textContent = n;
+        none.style.display = (rows.length && n === 0) ? '' : 'none';
+        // Reflete os filtros na URL para poder favoritar/compartilhar o link.
+        var p = new URLSearchParams();
+        if (term) p.set('q', q.value.trim());
+        if (st.value) p.set('status', st.value);
+        if (fv.value) p.set('fav', fv.value);
+        if (si.value !== '1') p.set('sit', si.value === '' ? 'all' : si.value);
+        var s = p.toString();
+        history.replaceState(null, '', '/devices' + (s ? '?' + s : ''));
+      }
+
+      [q, st, fv, si].forEach(function (el) {
+        el.addEventListener('input', apply);
+        el.addEventListener('change', apply);
+      });
+      document.getElementById('f-clear').addEventListener('click', function () {
+        q.value = ''; st.value = ''; fv.value = ''; si.value = '1'; apply();
+      });
+      // As acoes voltam para /devices com os mesmos filtros na query string
+      // (o PHP le $_GET tambem em POST), entao a tela reaparece como estava.
+      document.addEventListener('submit', function (ev) {
+        if (ev.target.hasAttribute('data-keep')) ev.target.action = '/devices' + location.search;
+      });
+      apply();
+    })();
     </script>
     <?php
     layout(ob_get_clean(), $admin, 'devices', 'Dispositivos');
+}
+
+function device_action(array $admin): void {
+    check_csrf();
+    $action = (string)($_POST['action'] ?? '');
+    $id  = (int)($_POST['id'] ?? 0);
+    $aid = (int)$admin['id'];
+    $pdo = db();
+    try {
+        // Apelido e favorito: por admin, em device_prefs. A linha nasce no
+        // primeiro uso e e removida quando volta a ser "sem nome e sem estrela".
+        if ($action === 'fav') {
+            $pdo->prepare('INSERT INTO device_prefs (admin_id, device_id, favorite) VALUES (?,?,1)
+                           ON DUPLICATE KEY UPDATE favorite = 1 - favorite')
+                ->execute([$aid, $id]);
+            prune_device_pref($aid, $id);
+            page_devices($admin, 'Favorito atualizado.'); return;
+        }
+        if ($action === 'alias') {
+            $v = trim((string)($_POST['alias'] ?? ''));
+            $v = $v === '' ? null : mb_substr($v, 0, 190);
+            $pdo->prepare('INSERT INTO device_prefs (admin_id, device_id, alias) VALUES (?,?,?)
+                           ON DUPLICATE KEY UPDATE alias = VALUES(alias)')
+                ->execute([$aid, $id, $v]);
+            prune_device_pref($aid, $id);
+            page_devices($admin, $v === null ? 'Nome removido.' : 'Nome salvo.'); return;
+        }
+        // Inativar e excluir sao globais: valem para todos os admins.
+        if ($action === 'toggle') {
+            $pdo->prepare('UPDATE devices SET active = 1 - active WHERE id = ?')->execute([$id]);
+            page_devices($admin, 'Situação do dispositivo atualizada.'); return;
+        }
+        if ($action === 'delete') {
+            // device_prefs some junto pelo ON DELETE CASCADE.
+            $pdo->prepare('DELETE FROM devices WHERE id = ?')->execute([$id]);
+            page_devices($admin, 'Dispositivo excluído.'); return;
+        }
+        throw new RuntimeException('Ação inválida.');
+    } catch (Throwable $ex) {
+        $msg = $ex instanceof RuntimeException ? $ex->getMessage() : 'Erro: ' . $ex->getMessage();
+        page_devices($admin, $msg);
+    }
+}
+
+// Descarta a preferencia que voltou ao estado padrao (sem nome e sem estrela),
+// para device_prefs guardar so o que o admin de fato personalizou.
+function prune_device_pref(int $adminId, int $deviceId): void {
+    db()->prepare('DELETE FROM device_prefs
+                   WHERE admin_id = ? AND device_id = ? AND alias IS NULL AND favorite = 0')
+        ->execute([$adminId, $deviceId]);
 }
 
 // ===========================================================================

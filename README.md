@@ -171,13 +171,18 @@ GRANT ALL PRIVILEGES ON rustdesk_panel.* TO 'rustdesk_panel'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-> **Atualizando um banco já existente:** a coluna da senha de conexão foi
-> adicionada depois. Se o seu banco é anterior a ela, rode uma vez:
+> **Atualizando um banco já existente:** rodar o `schema.sql` de novo **não
+> basta** — ele usa `CREATE TABLE IF NOT EXISTS`, então em um banco já criado
+> pula as tabelas inteiras e as colunas novas nunca chegam. Use o migrador:
 >
-> ```sql
-> ALTER TABLE devices ADD COLUMN conn_password VARCHAR(190) NULL,
->                     ADD COLUMN conn_password_at DATETIME NULL;
+> ```bash
+> php panel/migrate.php --dry-run   # mostra o que falta, sem alterar nada
+> php panel/migrate.php             # aplica
 > ```
+>
+> Ele é idempotente (pode rodar quantas vezes quiser) e cobre a senha de
+> conexão (`conn_password`), a inativação de dispositivos (`devices.active`) e
+> os apelidos/favoritos por admin (`device_prefs`).
 
 ### 2.3 Importar o schema
 
@@ -445,7 +450,9 @@ docker compose up -d / down / restart / ps
 docker compose logs -f hbbs
 
 # Banco
-mysql -u rustdesk_panel -p rustdesk_panel < panel/schema.sql
+mysql -u rustdesk_panel -p rustdesk_panel < panel/schema.sql   # banco novo
+php panel/migrate.php --dry-run                                 # banco já existente: o que falta
+php panel/migrate.php                                           # banco já existente: aplica
 
 # Painel
 cp panel/secrets.env.example panel/secrets.env   # e edite

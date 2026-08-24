@@ -73,3 +73,11 @@ button.danger{background:#ef4444}button.danger:hover{background:#dc2626}
 .switch input{width:20px;height:20px;accent-color:var(--brand)}
 .hint{margin-top:10px;color:var(--muted);font-size:13px}
 .card p.muted{text-align:left;padding:0;margin:0 0 12px;line-height:1.5}
+
+/* ---- Dispositivos: favoritos, filtros e linhas inativas ---- */
+.star{background:none;padding:2px 4px;font-size:16px;line-height:1;color:#cbd5e1}
+.star:hover{background:none;color:#f59e0b}
+.star.on{color:#f59e0b}
+tr.row-off td{opacity:.55}
+.filters{gap:10px}
+.actions input.alias{width:150px}
