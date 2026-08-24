@@ -89,4 +89,35 @@ button.danger{background:#ef4444}button.danger:hover{background:#dc2626}
 .star.on{color:#f59e0b}
 tr.row-off td{opacity:.55}
 .filters{gap:10px}
-.actions input.alias{width:150px}
+
+/* ID + nome na mesma celula, com lapis para edicao rapida */
+.dev-head{display:flex;align-items:center;gap:6px}
+.dev-name{font-weight:600}
+.dev-name.muted-inline{font-weight:400;font-style:italic}
+.muted-inline{color:var(--muted)}
+.dev-peer{font-size:12px;color:var(--muted);margin-top:2px}
+.edit-alias{color:var(--muted);font-size:13px;line-height:1;opacity:.45}
+tr:hover .edit-alias,.edit-alias:focus{opacity:1}
+.edit-alias:hover{color:var(--brand)}
+.dev-cell.editing .dev-head,.dev-cell.editing .dev-peer{display:none}
+.alias-form{display:flex;gap:4px;align-items:center}
+.alias-form[hidden]{display:none}
+.alias-form input{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px}
+.alias-form button{padding:6px 10px;font-size:12px}
+input.alias{width:150px}
+.pw-toggle{margin-left:6px}
+
+/* ---- Modal ---- */
+dialog.modal{border:0;border-radius:12px;padding:0;width:520px;max-width:calc(100vw - 32px);
+  color:var(--ink);box-shadow:0 20px 50px rgba(0,0,0,.25)}
+dialog.modal::backdrop{background:rgba(15,27,45,.45)}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding:16px 18px;border-bottom:1px solid var(--line)}
+.modal-head h3{margin:0;font-size:15px}
+#dm-badges{display:flex;gap:6px;margin-top:6px}
+.modal-x{background:none;color:var(--muted);padding:2px 6px;font-size:15px;line-height:1}
+.modal-x:hover{background:none;color:var(--ink)}
+.modal-body{padding:16px 18px}
+.dm-grid{display:grid;grid-template-columns:130px 1fr;gap:8px 14px;margin:0;font-size:13px}
+.dm-grid dt{color:var(--muted);font-weight:600}
+.dm-grid dd{margin:0;word-break:break-word}

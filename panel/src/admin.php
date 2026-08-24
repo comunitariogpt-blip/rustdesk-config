@@ -343,7 +343,7 @@ function page_devices(array $admin, string $flash = ''): void {
     </div>
     <div class="card"><h3>Dispositivos (<span id="dev-count"><?= count($rows) ?></span>)</h3>
     <table class="tbl"><thead><tr>
-      <th></th><th>ID</th><th>Nome</th><th>Status</th><th>Senha</th><th>Host</th><th>Usuário</th><th>SO</th><th>Versão</th><th>IP</th><th>Visto por último</th><th>Ações</th>
+      <th></th><th>ID / Nome</th><th>Status</th><th>Senha</th><th>Visto por último</th><th>Ações</th>
     </tr></thead><tbody id="dev-tbody">
     <?php foreach ($rows as $d):
         $act   = (int)$d['active'];
@@ -361,9 +361,13 @@ function page_devices(array $admin, string $flash = ''): void {
             <button class="star<?= $fav ? ' on' : '' ?>" title="<?= $fav ? 'Remover dos favoritos' : 'Marcar como favorito' ?>"><?= $fav ? '★' : '☆' ?></button>
           </form>
         </td>
-        <td class="mono"><?= e($d['peer_id']) ?></td>
-        <td class="actions">
-          <form method="post" action="/devices" data-keep>
+        <td class="dev-cell">
+          <div class="dev-head">
+            <span class="dev-name<?= $alias === '' ? ' muted-inline' : '' ?>"><?= e($alias !== '' ? $alias : 'sem nome') ?></span>
+            <a href="#" class="edit-alias" title="Editar nome">✎</a>
+          </div>
+          <div class="mono dev-peer"><?= e($d['peer_id']) ?></div>
+          <form method="post" action="/devices" class="alias-form" hidden data-keep>
             <input type="hidden" name="csrf" value="<?= $csrf ?>">
             <input type="hidden" name="action" value="alias">
             <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
@@ -383,13 +387,28 @@ function page_devices(array $admin, string $flash = ''): void {
             <span class="muted">—</span>
           <?php endif; ?>
         </td>
-        <td><?= e($d['hostname']) ?></td>
-        <td><?= e($d['username']) ?></td>
-        <td><?= e($d['os']) ?></td>
-        <td><?= e($d['version']) ?></td>
-        <td class="mono"><?= e(clean_ip($d['last_ip'])) ?></td>
         <td><?= e(fmt_dt($d['last_seen'])) ?></td>
         <td class="actions">
+          <?php /* Todo o inventario vai num unico atributo JSON: o popup e
+                   montado no navegador, sem consulta nem endpoint novo. */ ?>
+          <button type="button" class="details" data-dev="<?= e(json_encode([
+              'peer'   => (string)$d['peer_id'],
+              'name'   => $alias,
+              'online' => (int)$d['is_online'],
+              'active' => $act,
+              'host'   => (string)$d['hostname'],
+              'user'   => (string)$d['username'],
+              'os'     => (string)$d['os'],
+              'cpu'    => (string)$d['cpu'],
+              'mem'    => (string)$d['memory'],
+              'ver'    => (string)$d['version'],
+              'ip'     => clean_ip($d['last_ip']),
+              'uuid'   => (string)$d['uuid'],
+              'pw'     => (string)($d['conn_password'] ?? ''),
+              'pwAt'   => fmt_dt($d['conn_password_at']),
+              'first'  => fmt_dt($d['first_seen']),
+              'last'   => fmt_dt($d['last_seen']),
+          ], JSON_UNESCAPED_UNICODE)) ?>">Detalhes</button>
           <form method="post" action="/devices" data-keep>
             <input type="hidden" name="csrf" value="<?= $csrf ?>">
             <input type="hidden" name="action" value="toggle">
@@ -405,9 +424,33 @@ function page_devices(array $admin, string $flash = ''): void {
         </td>
       </tr>
     <?php endforeach;
-      if (!$rows) echo '<tr><td colspan="12" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
-      <tr id="no-match" style="display:none"><td colspan="12" class="muted">Nenhum dispositivo corresponde ao filtro.</td></tr>
+      if (!$rows) echo '<tr><td colspan="6" class="muted">Nenhum dispositivo registrado ainda.</td></tr>'; ?>
+      <tr id="no-match" style="display:none"><td colspan="6" class="muted">Nenhum dispositivo corresponde ao filtro.</td></tr>
     </tbody></table>
+    <dialog id="dev-modal" class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="dm-title"></h3>
+          <div id="dm-badges"></div>
+        </div>
+        <button type="button" class="modal-x" id="dm-close" aria-label="Fechar">✕</button>
+      </div>
+      <div class="modal-body">
+        <dl class="dm-grid">
+          <dt>Host</dt><dd id="dm-host"></dd>
+          <dt>Usuário</dt><dd id="dm-user"></dd>
+          <dt>Sistema</dt><dd id="dm-os"></dd>
+          <dt>CPU</dt><dd id="dm-cpu"></dd>
+          <dt>Memória</dt><dd id="dm-mem"></dd>
+          <dt>Versão</dt><dd id="dm-ver"></dd>
+          <dt>IP</dt><dd id="dm-ip" class="mono"></dd>
+          <dt>UUID</dt><dd id="dm-uuid" class="mono"></dd>
+          <dt>Senha</dt><dd id="dm-pw"></dd>
+          <dt>Primeiro contato</dt><dd id="dm-first"></dd>
+          <dt>Visto por último</dt><dd id="dm-last"></dd>
+        </dl>
+      </div>
+    </dialog>
     <p class="muted" style="margin-top:10px">
       A senha exibida é a de <strong>uso único</strong> que aparece na tela do
       dispositivo, reportada a cada heartbeat (~15 s). Ela muda quando o cliente
@@ -422,15 +465,93 @@ function page_devices(array $admin, string $flash = ''): void {
       reativado aqui.
     </p></div>
     <script>
-    document.querySelectorAll('.pw-toggle').forEach(function (a) {
-      a.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        var s = a.previousElementSibling;
-        var shown = s.dataset.shown === '1';
-        s.textContent = shown ? '••••••' : s.dataset.pw;
-        s.dataset.shown = shown ? '0' : '1';
-      });
+    // Olho da senha: por delegacao, porque o olho do popup nasce depois do load.
+    document.addEventListener('click', function (ev) {
+      var a = ev.target.closest && ev.target.closest('.pw-toggle');
+      if (!a) return;
+      ev.preventDefault();
+      var s = a.previousElementSibling;
+      var shown = s.dataset.shown === '1';
+      s.textContent = shown ? '••••••' : s.dataset.pw;
+      s.dataset.shown = shown ? '0' : '1';
     });
+
+    // Lapis: mostra o formulario de apelido dentro da propria celula.
+    (function () {
+      function edit(cell, on) {
+        cell.classList.toggle('editing', on);
+        cell.querySelector('.alias-form').hidden = !on;
+        if (on) { var i = cell.querySelector('input.alias'); i.focus(); i.select(); }
+      }
+      document.addEventListener('click', function (ev) {
+        var a = ev.target.closest && ev.target.closest('.edit-alias');
+        if (!a) return;
+        ev.preventDefault();
+        edit(a.closest('.dev-cell'), true);
+      });
+      document.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Escape' || !ev.target.matches || !ev.target.matches('input.alias')) return;
+        ev.target.value = ev.target.defaultValue;
+        edit(ev.target.closest('.dev-cell'), false);
+      });
+    })();
+
+    // Detalhes: o popup e preenchido com o JSON que ja veio no data-dev.
+    (function () {
+      var dlg = document.getElementById('dev-modal');
+      var campos = {
+        host: 'dm-host', user: 'dm-user', os: 'dm-os', cpu: 'dm-cpu', mem: 'dm-mem',
+        ver: 'dm-ver', ip: 'dm-ip', uuid: 'dm-uuid', first: 'dm-first', last: 'dm-last'
+      };
+
+      function put(id, v) {
+        // textContent em tudo: nao existe helper de escape no lado JS.
+        document.getElementById(id).textContent = (v && String(v).trim() !== '') ? v : '—';
+      }
+      function badge(txt, on) {
+        var s = document.createElement('span');
+        s.className = 'badge ' + (on ? 'on' : 'off');
+        s.textContent = txt;
+        return s;
+      }
+
+      document.addEventListener('click', function (ev) {
+        var b = ev.target.closest && ev.target.closest('.details');
+        if (!b) return;
+        var d = JSON.parse(b.dataset.dev);
+
+        document.getElementById('dm-title').textContent = d.name ? d.name + ' — ' + d.peer : d.peer;
+        var bd = document.getElementById('dm-badges');
+        bd.textContent = '';
+        bd.appendChild(badge(d.online ? 'online' : 'offline', d.online));
+        if (!d.active) bd.appendChild(badge('inativo', 0));
+
+        for (var k in campos) put(campos[k], d[k]);
+
+        var pw = document.getElementById('dm-pw');
+        pw.textContent = '';
+        if (d.pw) {
+          var s = document.createElement('span');
+          s.className = 'pw'; s.dataset.pw = d.pw; s.textContent = '••••••';
+          var a = document.createElement('a');
+          a.href = '#'; a.className = 'pw-toggle'; a.title = 'Mostrar/ocultar'; a.textContent = '👁';
+          pw.appendChild(s); pw.appendChild(a);
+          if (d.pwAt && d.pwAt !== '—') {
+            var small = document.createElement('small');
+            small.className = 'muted-inline';
+            small.textContent = ' atualizada em ' + d.pwAt;
+            pw.appendChild(small);
+          }
+        } else {
+          pw.textContent = '—';
+        }
+        dlg.showModal();
+      });
+
+      document.getElementById('dm-close').addEventListener('click', function () { dlg.close(); });
+      // Clique fora do conteudo (no backdrop) tem o proprio <dialog> como alvo.
+      dlg.addEventListener('click', function (ev) { if (ev.target === dlg) dlg.close(); });
+    })();
 
     (function () {
       var q  = document.getElementById('f-q'),
