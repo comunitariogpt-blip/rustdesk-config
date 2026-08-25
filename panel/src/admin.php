@@ -262,8 +262,8 @@ function page_users(array $admin, string $flash = '', bool $openNew = false): vo
         <ul class="hint roles">
           <li><b>Administrador</b> — vê e faz tudo, inclusive cadastrar usuários.</li>
           <li><b>Técnico</b> — vê apenas a visão geral e a lista de dispositivos
-            ativos; pode dar apelido e favoritar (isso é só dele), mas não inativa
-            nem exclui dispositivo nenhum.</li>
+            ativos, com o nome e a estrela que o administrador definiu; não pode
+            renomear, favoritar, inativar nem excluir dispositivo nenhum.</li>
         </ul>
       </div>
     </div>
@@ -314,7 +314,7 @@ function page_users(array $admin, string $flash = '', bool $openNew = false): vo
               </select>
               <button>Alterar perfil</button>
             </form>
-            <form method="post" action="/users" onsubmit="return confirm('Excluir o usuário <?= e($u['username']) ?>? Os apelidos e favoritos que ele deu aos dispositivos são apagados junto — os dispositivos em si não são afetados.')">
+            <form method="post" action="/users" onsubmit="return confirm('Excluir o usuário <?= e($u['username']) ?>? Ele perde o acesso ao painel; os dispositivos não são afetados.')">
               <input type="hidden" name="csrf" value="<?= $csrf ?>">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="id" value="<?= $uid ?>">
@@ -326,9 +326,9 @@ function page_users(array $admin, string $flash = '', bool $openNew = false): vo
     <?php endforeach; ?>
     </tbody></table>
     <p class="muted" style="margin-top:10px">
-      O <b>apelido</b> e a <b>estrela</b> dos dispositivos são de cada usuário: ao
-      excluir uma conta, só a personalização dela desaparece. Um usuário não pode
-      alterar o próprio perfil nem se excluir — peça a outro administrador.
+      O <b>apelido</b> e a <b>estrela</b> dos dispositivos são globais: valem para
+      todas as contas e continuam lá depois de excluir um usuário. Um usuário não
+      pode alterar o próprio perfil nem se excluir — peça a outro administrador.
     </p></div>
     <?php
     layout(ob_get_clean(), $admin, 'users', 'Usuários');
@@ -501,17 +501,13 @@ function page_devices(array $admin, string $flash = ''): void {
 
     // Traz a lista inteira (inclusive inativos): a filtragem acontece no
     // navegador, sem recarregar. Favoritos e ativos primeiro. Apelido e
-    // favorito vem de device_prefs, que e por admin — cada um ve os seus.
-    $st = db()->prepare(
-        'SELECT d.*, p.alias, COALESCE(p.favorite, 0) AS favorite,
-                (d.last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND) AS is_online
-         FROM devices d
-         LEFT JOIN device_prefs p ON p.device_id = d.id AND p.admin_id = ?'
+    // favorito sao colunas de devices, globais: todo mundo ve o mesmo nome.
+    $rows = db()->query(
+        'SELECT d.*, (d.last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND) AS is_online
+         FROM devices d'
         . ($isAdm ? '' : ' WHERE d.active = 1') .
-        ' ORDER BY d.active DESC, favorite DESC, is_online DESC, d.last_seen DESC'
-    );
-    $st->execute([(int)$admin['id']]);
-    $rows = $st->fetchAll();
+        ' ORDER BY d.active DESC, d.favorite DESC, is_online DESC, d.last_seen DESC'
+    )->fetchAll();
     $csrf = csrf_token();
 
     // Estado inicial dos filtros vindo da URL, para o link ser compartilhavel.
@@ -565,19 +561,26 @@ function page_devices(array $admin, string $flash = ''): void {
           data-search="<?= e(mb_strtolower($d['peer_id'] . ' ' . $alias . ' ' . (string)$d['hostname'])) ?>"
           data-online="<?= (int)$d['is_online'] ?>" data-fav="<?= $fav ?>" data-active="<?= $act ?>">
         <td>
+          <?php /* Nome e estrela valem para todos, entao so administrador
+                   altera. O tecnico ve a estrela como texto, sem formulario. */ ?>
+          <?php if ($isAdm): ?>
           <form method="post" action="/devices" data-keep>
             <input type="hidden" name="csrf" value="<?= $csrf ?>">
             <input type="hidden" name="action" value="fav">
             <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
             <button class="star<?= $fav ? ' on' : '' ?>" title="<?= $fav ? 'Remover dos favoritos' : 'Marcar como favorito' ?>"><?= $fav ? '★' : '☆' ?></button>
           </form>
+          <?php else: ?>
+          <span class="star<?= $fav ? ' on' : '' ?>" title="<?= $fav ? 'Favorito' : 'Não favorito' ?>"><?= $fav ? '★' : '☆' ?></span>
+          <?php endif; ?>
         </td>
         <td class="dev-cell">
           <div class="dev-head">
             <span class="dev-name<?= $alias === '' ? ' muted-inline' : '' ?>"><?= e($alias !== '' ? $alias : 'sem nome') ?></span>
-            <a href="#" class="edit-alias" title="Editar nome">✎</a>
+            <?php if ($isAdm): ?><a href="#" class="edit-alias" title="Editar nome">✎</a><?php endif; ?>
           </div>
           <div class="mono dev-peer"><?= e($d['peer_id']) ?></div>
+          <?php if ($isAdm): ?>
           <form method="post" action="/devices" class="alias-form" hidden data-keep>
             <input type="hidden" name="csrf" value="<?= $csrf ?>">
             <input type="hidden" name="action" value="alias">
@@ -585,6 +588,7 @@ function page_devices(array $admin, string $flash = ''): void {
             <input class="alias" name="alias" value="<?= e($alias) ?>" placeholder="dar um nome…" maxlength="190">
             <button>Salvar</button>
           </form>
+          <?php endif; ?>
         </td>
         <td><?= ((int)$d['is_online'])
               ? '<span class="badge on">online</span>'
@@ -673,15 +677,15 @@ function page_devices(array $admin, string $flash = ''): void {
       mostram “—”: essa senha é guardada com hash e não pode ser recuperada.
     </p>
     <p class="muted">
-      O <strong>nome</strong> e a <strong>estrela</strong> são seus: cada conta do
-      painel tem os próprios, e o que você escrever aqui não muda a lista dos outros.
+      O <strong>nome</strong> e a <strong>estrela</strong> valem para todo mundo: o
+      dispositivo se chama a mesma coisa em todas as contas do painel.
       <?php if ($isAdm): ?>
-      Já <strong>inativar</strong> vale para todo mundo — tira o PC da lista sem
-      apagar nada, e ele continua inativo mesmo que volte a se conectar, até ser
-      reativado aqui.
+      O mesmo vale para <strong>inativar</strong> — tira o PC da lista sem apagar
+      nada, e ele continua inativo mesmo que volte a se conectar, até ser reativado
+      aqui.
       <?php else: ?>
-      Inativar e excluir dispositivos são ações de administrador: esta lista mostra
-      só os dispositivos ativos.
+      Nomear, favoritar, inativar e excluir dispositivos são ações de administrador:
+      esta lista mostra só os dispositivos ativos.
       <?php endif; ?>
     </p></div>
     <script>
@@ -832,39 +836,28 @@ function device_action(array $admin): void {
     check_csrf();
     $action = (string)($_POST['action'] ?? '');
     $id  = (int)($_POST['id'] ?? 0);
-    $aid = (int)$admin['id'];
     $pdo = db();
     try {
-        // Apelido e favorito: por admin, em device_prefs. A linha nasce no
-        // primeiro uso e e removida quando volta a ser "sem nome e sem estrela".
+        // Todas as acoes sao globais: nome, estrela, situacao e exclusao valem
+        // para todos os admins, e por isso so administrador executa. Checagem
+        // aqui, e nao so no HTML, porque o POST pode vir forjado.
+        if (!is_panel_admin($admin)) { deny_page(); return; }
         if ($action === 'fav') {
-            $pdo->prepare('INSERT INTO device_prefs (admin_id, device_id, favorite) VALUES (?,?,1)
-                           ON DUPLICATE KEY UPDATE favorite = 1 - favorite')
-                ->execute([$aid, $id]);
-            prune_device_pref($aid, $id);
+            $pdo->prepare('UPDATE devices SET favorite = 1 - favorite WHERE id = ?')->execute([$id]);
             page_devices($admin, 'Favorito atualizado.'); return;
         }
         if ($action === 'alias') {
             $v = trim((string)($_POST['alias'] ?? ''));
             $v = $v === '' ? null : mb_substr($v, 0, 190);
-            $pdo->prepare('INSERT INTO device_prefs (admin_id, device_id, alias) VALUES (?,?,?)
-                           ON DUPLICATE KEY UPDATE alias = VALUES(alias)')
-                ->execute([$aid, $id, $v]);
-            prune_device_pref($aid, $id);
+            $pdo->prepare('UPDATE devices SET alias = ? WHERE id = ?')->execute([$v, $id]);
             page_devices($admin, $v === null ? 'Nome removido.' : 'Nome salvo.'); return;
-        }
-        // Inativar e excluir sao globais: valem para todos os admins, e por isso
-        // so administrador executa. Checagem aqui, e nao so no HTML, porque o
-        // POST pode vir forjado.
-        if ($action === 'toggle' || $action === 'delete') {
-            if (!is_panel_admin($admin)) { deny_page(); return; }
         }
         if ($action === 'toggle') {
             $pdo->prepare('UPDATE devices SET active = 1 - active WHERE id = ?')->execute([$id]);
             page_devices($admin, 'Situação do dispositivo atualizada.'); return;
         }
         if ($action === 'delete') {
-            // device_prefs some junto pelo ON DELETE CASCADE.
+            // O nome e a estrela sao colunas da propria linha: somem junto.
             $pdo->prepare('DELETE FROM devices WHERE id = ?')->execute([$id]);
             page_devices($admin, 'Dispositivo excluído.'); return;
         }
@@ -873,14 +866,6 @@ function device_action(array $admin): void {
         $msg = $ex instanceof RuntimeException ? $ex->getMessage() : 'Erro: ' . $ex->getMessage();
         page_devices($admin, $msg);
     }
-}
-
-// Descarta a preferencia que voltou ao estado padrao (sem nome e sem estrela),
-// para device_prefs guardar so o que o admin de fato personalizou.
-function prune_device_pref(int $adminId, int $deviceId): void {
-    db()->prepare('DELETE FROM device_prefs
-                   WHERE admin_id = ? AND device_id = ? AND alias IS NULL AND favorite = 0')
-        ->execute([$adminId, $deviceId]);
 }
 
 // ===========================================================================

@@ -54,10 +54,13 @@ CREATE TABLE IF NOT EXISTS devices (
   -- para o operador nao precisar pedi-la por telefone. Guardada em texto claro
   -- porque precisa ser exibida; rotaciona a cada reinicio do cliente.
   conn_password VARCHAR(190) NULL, conn_password_at DATETIME NULL,
-  -- Situacao no painel: inativar tira PCs antigos da lista sem apagar nada.
-  -- E global (um PC descartado esta descartado para todos) e nenhum upsert da
-  -- API toca nesta coluna, entao um PC inativado nao volta sozinho no heartbeat.
-  -- Apelido e favorito NAO ficam aqui: sao por admin, em device_prefs.
+  -- Apelido, favorito e situacao sao GLOBAIS: valem para todas as contas do
+  -- painel, entao o PC se chama a mesma coisa para todo mundo. So o perfil
+  -- Administrador altera os tres. Inativar tira PCs antigos da lista sem apagar
+  -- nada; nenhum upsert da API toca nestas colunas, entao o que foi nomeado,
+  -- favoritado ou inativado nao volta sozinho no proximo heartbeat.
+  alias VARCHAR(190) NULL,
+  favorite TINYINT NOT NULL DEFAULT 0,
   active TINYINT NOT NULL DEFAULT 1,
   first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, last_seen DATETIME NULL,
   online TINYINT NOT NULL DEFAULT 0,
@@ -71,22 +74,6 @@ CREATE TABLE IF NOT EXISTS devices (
 -- e idempotente e checa coluna por coluna:
 --   php panel/migrate.php --dry-run
 --   php panel/migrate.php
-
--- Apelido e favorito sao POR ADMIN: cada um nomeia e marca os PCs do seu jeito
--- sem mexer na lista dos outros. A linha so passa a existir quando o admin de
--- fato nomeia ou favorita o dispositivo, e some quando ele desfaz os dois.
--- Os dois ON DELETE CASCADE limpam sozinhos ao excluir um admin ou um device.
-CREATE TABLE IF NOT EXISTS device_prefs (
-  admin_id INT NOT NULL,
-  device_id INT NOT NULL,
-  alias VARCHAR(190) NULL,
-  favorite TINYINT NOT NULL DEFAULT 0,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (admin_id, device_id),
-  CONSTRAINT fk_prefs_admin  FOREIGN KEY (admin_id)  REFERENCES admins(id)  ON DELETE CASCADE,
-  CONSTRAINT fk_prefs_device FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-  INDEX idx_prefs_device (device_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS connections (
   id INT AUTO_INCREMENT PRIMARY KEY,

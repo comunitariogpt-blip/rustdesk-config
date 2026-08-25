@@ -182,8 +182,8 @@ FLUSH PRIVILEGES;
 >
 > Ele é idempotente (pode rodar quantas vezes quiser) e cobre a senha de
 > conexão (`conn_password`), a inativação de dispositivos (`devices.active`),
-> os apelidos/favoritos por admin (`device_prefs`) e o perfil das contas do
-> painel (`admins.role` — veja a seção 3.4.1).
+> os apelidos/favoritos globais (`devices.alias`, `devices.favorite`) e o perfil
+> das contas do painel (`admins.role` — veja a seção 3.4.1).
 
 ### 2.3 Importar o schema
 
@@ -320,7 +320,7 @@ As contas do painel têm dois perfis, definidos por quem cadastra:
 |----------------------------------------------------------|---------------|---------|
 | Visão geral e Dispositivos                               | ✔             | ✔       |
 | Ver a senha de conexão e os Detalhes do dispositivo      | ✔             | ✔       |
-| Apelido (✎) e favorito (★) — cada conta tem os seus      | ✔             | ✔       |
+| Apelido (✎) e favorito (★) — valem para todos            | ✔             | ✖       |
 | Inativar / excluir dispositivo (vale para todos)         | ✔             | ✖       |
 | Usuários, Operadores, Conexões, Auditoria, Configurações | ✔             | ✖       |
 

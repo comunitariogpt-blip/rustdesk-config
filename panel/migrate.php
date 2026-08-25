@@ -69,50 +69,12 @@ if (!idx_exists('devices', 'idx_device_active')) {
     echo "  · devices.idx_device_active já existe\n";
 }
 
-// --- 3. Apelido e favorito por admin ----------------------------------------
-if (!table_exists('device_prefs')) {
-    run('CREATE TABLE device_prefs (
-           admin_id INT NOT NULL,
-           device_id INT NOT NULL,
-           alias VARCHAR(190) NULL,
-           favorite TINYINT NOT NULL DEFAULT 0,
-           updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-           PRIMARY KEY (admin_id, device_id),
-           CONSTRAINT fk_prefs_admin  FOREIGN KEY (admin_id)  REFERENCES admins(id)  ON DELETE CASCADE,
-           CONSTRAINT fk_prefs_device FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-           INDEX idx_prefs_device (device_id)
-         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
-        'device_prefs criada');
-} else {
-    echo "  · device_prefs já existe\n";
-}
-
-// --- 4. Versao intermediaria: alias/favorite eram colunas globais de devices --
-// Se o banco passou por ela, o que estava gravado e copiado para CADA admin
-// (era global, entao todos continuam vendo o mesmo) antes de remover as colunas.
-if (col_exists('devices', 'alias') || col_exists('devices', 'favorite')) {
-    $n = (int)$pdo->query('SELECT COUNT(*) FROM devices
-                           WHERE (alias IS NOT NULL AND alias <> "") OR favorite = 1')->fetchColumn();
-    if ($n > 0) {
-        run('INSERT INTO device_prefs (admin_id, device_id, alias, favorite)
-             SELECT a.id, d.id, NULLIF(d.alias, ""), d.favorite
-             FROM devices d CROSS JOIN admins a
-             WHERE (d.alias IS NOT NULL AND d.alias <> "") OR d.favorite = 1
-             ON DUPLICATE KEY UPDATE alias = VALUES(alias), favorite = VALUES(favorite)',
-            "device_prefs: $n dispositivo(s) copiado(s) para cada admin");
-    }
-    $drop = [];
-    if (col_exists('devices', 'alias'))    $drop[] = 'DROP COLUMN alias';
-    if (col_exists('devices', 'favorite')) $drop[] = 'DROP COLUMN favorite';
-    run('ALTER TABLE devices ' . implode(', ', $drop), 'devices: ' . implode(', ', $drop));
-} else {
-    echo "  · devices não tem alias/favorite globais (ok)\n";
-}
-
-// --- 5. Perfil das contas do painel -----------------------------------------
-// O default e 'tecnico' (menor privilegio para qualquer INSERT que esqueca a
-// coluna); o UPDATE logo em seguida promove quem ja existia, porque ate aqui
-// toda conta do painel era administradora de fato.
+// --- 3. Perfil das contas do painel -----------------------------------------
+// Vem antes do passo 4 de proposito: a consolidacao dos apelidos desempata por
+// admins.role, e existe banco que ganhou device_prefs numa versao anterior a
+// esta coluna. O default e 'tecnico' (menor privilegio para qualquer INSERT que
+// esqueca a coluna); o UPDATE logo em seguida promove quem ja existia, porque
+// ate aqui toda conta do painel era administradora de fato.
 if (!col_exists('admins', 'role')) {
     run("ALTER TABLE admins ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'tecnico'",
         'admins: role');
@@ -120,6 +82,46 @@ if (!col_exists('admins', 'role')) {
         'admins: contas existentes viram Administrador');
 } else {
     echo "  · admins.role já existe\n";
+}
+
+// --- 4. Apelido e favorito globais ------------------------------------------
+$add = [];
+if (!col_exists('devices', 'alias'))    $add[] = 'ADD COLUMN alias VARCHAR(190) NULL';
+if (!col_exists('devices', 'favorite')) $add[] = 'ADD COLUMN favorite TINYINT NOT NULL DEFAULT 0';
+if ($add) {
+    run('ALTER TABLE devices ' . implode(', ', $add), 'devices: alias, favorite (globais)');
+} else {
+    echo "  · devices.alias/favorite já existem\n";
+}
+
+// --- 5. Versao intermediaria: alias/favorite eram por admin, em device_prefs -
+// Se o banco passou por ela, as preferencias das varias contas sao consolidadas
+// num valor unico antes da tabela sair: o favorito e o MAX (qualquer estrela
+// vira estrela para todos) e o apelido e o de um Administrador, com o mais
+// recente desempatando. Subconsulta com LIMIT 1 em vez de GROUP_CONCAT, que tem
+// limite de tamanho e quebraria com apelido contendo o separador.
+if (table_exists('device_prefs')) {
+    $n = (int)$pdo->query('SELECT COUNT(DISTINCT device_id) FROM device_prefs
+                           WHERE (alias IS NOT NULL AND alias <> "") OR favorite = 1')->fetchColumn();
+    if ($n > 0) {
+        run('UPDATE devices d
+             JOIN (SELECT device_id, MAX(favorite) AS fav FROM device_prefs GROUP BY device_id) p
+               ON p.device_id = d.id
+             SET d.favorite = p.fav',
+            'devices.favorite: consolidado de device_prefs');
+        run('UPDATE devices d
+             SET d.alias = (
+               SELECT p.alias FROM device_prefs p JOIN admins a ON a.id = p.admin_id
+               WHERE p.device_id = d.id AND p.alias IS NOT NULL AND p.alias <> ""
+               ORDER BY (a.role = "admin") DESC, p.updated_at DESC, p.admin_id ASC
+               LIMIT 1)
+             WHERE EXISTS (SELECT 1 FROM device_prefs p2
+                           WHERE p2.device_id = d.id AND p2.alias IS NOT NULL AND p2.alias <> "")',
+            'devices.alias: consolidado de device_prefs (o do Administrador vence)');
+    }
+    run('DROP TABLE device_prefs', "device_prefs removida ($n dispositivo(s) consolidado(s))");
+} else {
+    echo "  · device_prefs não existe (apelido/favorito já são globais)\n";
 }
 
 echo $did === 0
