@@ -76,11 +76,14 @@ button:hover{background:var(--brand-d)}
 button.danger{background:#ef4444}button.danger:hover{background:#dc2626}
 .actions{display:flex;gap:6px;flex-wrap:wrap}
 .actions form{display:flex;gap:4px;align-items:center}
-.actions input{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px}
+.actions input,.actions select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px}
 .actions button{padding:6px 10px;font-size:12px}
 .switch{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;cursor:pointer;margin:6px 0}
 .switch input{width:20px;height:20px;accent-color:var(--brand)}
 .hint{margin-top:10px;color:var(--muted);font-size:13px}
+.roles{margin:12px 0 0;padding-left:18px;line-height:1.5}
+.roles li{margin:4px 0}
+.roles b{color:var(--ink)}
 .card p.muted{text-align:left;padding:0;margin:0 0 12px;line-height:1.5}
 
 /* ---- Dispositivos: favoritos, filtros e linhas inativas ---- */

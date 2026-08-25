@@ -8,6 +8,42 @@ require_once __DIR__ . '/settings.php';
 const ONLINE_WINDOW = 90; // seconds since last heartbeat to count as online
 
 // ===========================================================================
+// Menu e permissao — fonte unica
+// ===========================================================================
+// O menu da barra lateral e a lista de rotas restritas sao a MESMA coisa: se
+// fossem dois arrays separados eles divergiriam no primeiro item novo, e um
+// item some do menu mas continua acessivel pela barra de enderecos. Quem so
+// tem 'adminOnly' => false e o que o perfil Tecnico enxerga.
+function panel_nav(): array {   // navkey => [href, label, adminOnly]
+    return [
+        'dashboard'   => ['/',            'Visão geral',   false],
+        'devices'     => ['/devices',     'Dispositivos',  false],
+        'users'       => ['/users',       'Usuários',      true],
+        'operators'   => ['/operators',   'Operadores',    true],
+        'connections' => ['/connections', 'Conexões',      true],
+        'audit'       => ['/audit',       'Auditoria',     true],
+        'settings'    => ['/settings',    'Configurações', true],
+    ];
+}
+
+/** True quando a rota existe no menu e exige perfil de administrador. */
+function route_is_admin_only(string $uri): bool {
+    foreach (panel_nav() as [$href, $label, $adminOnly]) {
+        if ($href === $uri) return $adminOnly;
+    }
+    return false;
+}
+
+function deny_page(): void {
+    http_response_code(403);
+    layout_simple('Acesso restrito',
+        '<h2>Acesso restrito</h2>
+         <p class="muted">Esta área é exclusiva de administradores do painel.
+         Fale com um administrador se precisar de acesso.</p>
+         <p><a href="/">Voltar para a visão geral</a></p>');
+}
+
+// ===========================================================================
 // Router
 // ===========================================================================
 function admin_dispatch(string $uri): void {
@@ -17,8 +53,13 @@ function admin_dispatch(string $uri): void {
     if ($uri === '/logout') { do_logout(); return; }
 
     $admin = require_admin();
+    // Vale para GET e POST de uma vez so: nenhuma tela restrita precisa repetir
+    // a checagem, e um POST forjado para /users ou /settings para aqui.
+    if (route_is_admin_only($uri) && !is_panel_admin($admin)) { deny_page(); return; }
+
     switch ($uri) {
         case '/':            page_dashboard($admin);   break;
+        case '/users':       $m === 'POST' ? users_action($admin) : page_users($admin); break;
         case '/operators':   $m === 'POST' ? operator_action($admin) : page_operators($admin); break;
         case '/devices':     $m === 'POST' ? device_action($admin) : page_devices($admin); break;
         case '/connections': page_connections($admin); break;
@@ -183,6 +224,168 @@ function page_dashboard(array $admin): void {
 }
 
 // ===========================================================================
+// Usuarios do painel (tabela admins) — so administradores chegam aqui
+// ===========================================================================
+function page_users(array $admin, string $flash = '', bool $openNew = false): void {
+    $users = db()->query('SELECT * FROM admins ORDER BY username')->fetchAll();
+    $csrf  = csrf_token();
+    $me    = (int)$admin['id'];
+    ob_start();
+    if ($flash) echo '<div class="alert ok">' . e($flash) . '</div>';
+    ?>
+    <div class="card">
+      <?php /* O cartao comeca fechado: so o botao aparece. Reabrir/fechar e
+               so pelo botao, e recarregar a pagina volta ao estado fechado.
+               $openNew deixa aberto quando um cadastro acabou de falhar, para
+               a pessoa nao perder o que digitou de vista. */ ?>
+      <button type="button" id="nu-toggle" aria-expanded="<?= $openNew ? 'true' : 'false' ?>" aria-controls="nu-box">
+        Novo usuário
+      </button>
+      <div id="nu-box" <?= $openNew ? '' : 'hidden' ?>>
+        <p class="muted" style="margin-top:14px">
+          Contas deste painel. Não confunda com <a href="/operators">Operadores</a>,
+          que são as contas usadas para entrar no app Operador do
+          <?= e(PANEL_BRAND) ?> — são cadastros separados.
+        </p>
+        <form method="post" action="/users" class="formrow">
+          <input type="hidden" name="csrf" value="<?= $csrf ?>">
+          <input type="hidden" name="action" value="create">
+          <input name="username" placeholder="usuário" required>
+          <input name="name" placeholder="nome">
+          <input name="password" placeholder="senha" required>
+          <select name="role">
+            <option value="tecnico">Técnico</option>
+            <option value="admin">Administrador</option>
+          </select>
+          <button type="submit">Criar</button>
+        </form>
+        <ul class="hint roles">
+          <li><b>Administrador</b> — vê e faz tudo, inclusive cadastrar usuários.</li>
+          <li><b>Técnico</b> — vê apenas a visão geral e a lista de dispositivos
+            ativos; pode dar apelido e favoritar (isso é só dele), mas não inativa
+            nem exclui dispositivo nenhum.</li>
+        </ul>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var b = document.getElementById('nu-toggle'),
+          box = document.getElementById('nu-box');
+      b.addEventListener('click', function () {
+        var open = box.hidden;
+        box.hidden = !open;
+        b.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) box.querySelector('input[name=username]').focus();
+      });
+    })();
+    </script>
+    <div class="card"><h3>Usuários do painel</h3>
+    <table class="tbl"><thead><tr>
+      <th>Usuário</th><th>Nome</th><th>Perfil</th><th>Criado em</th><th>Último login</th><th>Ações</th>
+    </tr></thead><tbody>
+    <?php foreach ($users as $u):
+        $uid    = (int)$u['id'];
+        $isSelf = $uid === $me;
+        $isAdm  = is_panel_admin($u); ?>
+      <tr>
+        <td><?= e($u['username']) ?><?= $isSelf ? ' <span class="muted-inline">(você)</span>' : '' ?></td>
+        <td><?= e($u['name']) ?></td>
+        <td><span class="badge <?= $isAdm ? 'on' : 'off' ?>"><?= e(role_label($u['role'] ?? null)) ?></span></td>
+        <td><?= e(fmt_dt($u['created_at'])) ?></td>
+        <td><?= e(fmt_dt($u['last_login'])) ?></td>
+        <td class="actions">
+          <form method="post" action="/users" onsubmit="return this.np.value!==''">
+            <input type="hidden" name="csrf" value="<?= $csrf ?>">
+            <input type="hidden" name="action" value="reset">
+            <input type="hidden" name="id" value="<?= $uid ?>">
+            <input name="np" placeholder="nova senha" size="10">
+            <button>Resetar</button>
+          </form>
+          <?php /* A propria conta nao troca de perfil nem se exclui: e isso que
+                   garante que sempre sobre pelo menos um administrador. */ ?>
+          <?php if (!$isSelf): ?>
+            <form method="post" action="/users">
+              <input type="hidden" name="csrf" value="<?= $csrf ?>">
+              <input type="hidden" name="action" value="role">
+              <input type="hidden" name="id" value="<?= $uid ?>">
+              <select name="role">
+                <option value="tecnico" <?= $isAdm ? '' : 'selected' ?>>Técnico</option>
+                <option value="admin" <?= $isAdm ? 'selected' : '' ?>>Administrador</option>
+              </select>
+              <button>Alterar perfil</button>
+            </form>
+            <form method="post" action="/users" onsubmit="return confirm('Excluir o usuário <?= e($u['username']) ?>? Os apelidos e favoritos que ele deu aos dispositivos são apagados junto — os dispositivos em si não são afetados.')">
+              <input type="hidden" name="csrf" value="<?= $csrf ?>">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id" value="<?= $uid ?>">
+              <button class="danger">Excluir</button>
+            </form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+    <p class="muted" style="margin-top:10px">
+      O <b>apelido</b> e a <b>estrela</b> dos dispositivos são de cada usuário: ao
+      excluir uma conta, só a personalização dela desaparece. Um usuário não pode
+      alterar o próprio perfil nem se excluir — peça a outro administrador.
+    </p></div>
+    <?php
+    layout(ob_get_clean(), $admin, 'users', 'Usuários');
+}
+
+function users_action(array $admin): void {
+    check_csrf();
+    $action = (string)($_POST['action'] ?? '');
+    $me  = (int)$admin['id'];
+    $pdo = db();
+    try {
+        if ($action === 'create') {
+            $u = trim((string)($_POST['username'] ?? ''));
+            $p = (string)($_POST['password'] ?? '');
+            if ($u === '' || $p === '') throw new RuntimeException('Usuário e senha obrigatórios.');
+            $pdo->prepare('INSERT INTO admins (username, password_hash, name, role, created_at) VALUES (?,?,?,?,?)')
+                ->execute([$u, password_hash($p, PASSWORD_BCRYPT),
+                           trim((string)($_POST['name'] ?? '')),
+                           posted_role(), now_utc()]);
+            page_users($admin, "Usuário “$u” criado como " . role_label(posted_role()) . '.'); return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if ($action === 'reset') {
+            $np = (string)($_POST['np'] ?? '');
+            if ($np === '') throw new RuntimeException('Informe a nova senha.');
+            $pdo->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
+                ->execute([password_hash($np, PASSWORD_BCRYPT), $id]);
+            page_users($admin, 'Senha redefinida.'); return;
+        }
+        // As duas travas abaixo sao o que impede o painel de ficar sem nenhum
+        // administrador: como ninguem se rebaixa nem se apaga, o ultimo admin
+        // sempre continua de pe.
+        if ($action === 'role') {
+            if ($id === $me) throw new RuntimeException('Você não pode alterar o próprio perfil.');
+            $r = posted_role();
+            $pdo->prepare('UPDATE admins SET role = ? WHERE id = ?')->execute([$r, $id]);
+            page_users($admin, 'Perfil atualizado para ' . role_label($r) . '.'); return;
+        }
+        if ($action === 'delete') {
+            if ($id === $me) throw new RuntimeException('Você não pode excluir a própria conta.');
+            $pdo->prepare('DELETE FROM admins WHERE id = ?')->execute([$id]);
+            page_users($admin, 'Usuário excluído.'); return;
+        }
+        throw new RuntimeException('Ação inválida.');
+    } catch (Throwable $ex) {
+        $msg = $ex instanceof RuntimeException ? $ex->getMessage() : 'Erro: ' . $ex->getMessage();
+        // Cadastro que falhou reabre o formulario junto com a mensagem.
+        page_users($admin, $msg, $action === 'create');
+    }
+}
+
+/** Perfil vindo do formulario; qualquer coisa fora da lista vira Tecnico. */
+function posted_role(): string {
+    return ((string)($_POST['role'] ?? '')) === 'admin' ? 'admin' : 'tecnico';
+}
+
+// ===========================================================================
 // Operators CRUD
 // ===========================================================================
 function page_operators(array $admin, string $flash = ''): void {
@@ -291,6 +494,11 @@ function operator_action(array $admin): void {
 // Devices
 // ===========================================================================
 function page_devices(array $admin, string $flash = ''): void {
+    // Tecnico nao inativa nem reativa nada, entao um PC inativado (= descartado)
+    // so lhe apareceria como linha morta que ele nao pode resolver: para ele a
+    // consulta ja sai filtrada e o seletor de situacao nem existe.
+    $isAdm = is_panel_admin($admin);
+
     // Traz a lista inteira (inclusive inativos): a filtragem acontece no
     // navegador, sem recarregar. Favoritos e ativos primeiro. Apelido e
     // favorito vem de device_prefs, que e por admin — cada um ve os seus.
@@ -298,8 +506,9 @@ function page_devices(array $admin, string $flash = ''): void {
         'SELECT d.*, p.alias, COALESCE(p.favorite, 0) AS favorite,
                 (d.last_seen >= UTC_TIMESTAMP() - INTERVAL ' . ONLINE_WINDOW . ' SECOND) AS is_online
          FROM devices d
-         LEFT JOIN device_prefs p ON p.device_id = d.id AND p.admin_id = ?
-         ORDER BY d.active DESC, favorite DESC, is_online DESC, d.last_seen DESC'
+         LEFT JOIN device_prefs p ON p.device_id = d.id AND p.admin_id = ?'
+        . ($isAdm ? '' : ' WHERE d.active = 1') .
+        ' ORDER BY d.active DESC, favorite DESC, is_online DESC, d.last_seen DESC'
     );
     $st->execute([(int)$admin['id']]);
     $rows = $st->fetchAll();
@@ -333,11 +542,13 @@ function page_devices(array $admin, string $flash = ''): void {
             <option value="<?= $k ?>" <?= (string)$k === $fFv ? 'selected' : '' ?>><?= $lbl ?></option>
           <?php endforeach; ?>
         </select>
+        <?php if ($isAdm): ?>
         <select id="f-sit">
           <?php foreach (['1' => 'Ativos', '0' => 'Inativos', '' => 'Ativos e inativos'] as $k => $lbl): ?>
             <option value="<?= $k ?>" <?= (string)$k === $fSi ? 'selected' : '' ?>><?= $lbl ?></option>
           <?php endforeach; ?>
         </select>
+        <?php endif; ?>
         <button type="button" id="f-clear">Limpar</button>
       </div>
     </div>
@@ -409,6 +620,9 @@ function page_devices(array $admin, string $flash = ''): void {
               'first'  => fmt_dt($d['first_seen']),
               'last'   => fmt_dt($d['last_seen']),
           ], JSON_UNESCAPED_UNICODE)) ?>">Detalhes</button>
+          <?php /* Inativar e excluir sao globais — so administrador. Esconder o
+                   botao nao e protecao: device_action() recusa a acao de novo. */ ?>
+          <?php if ($isAdm): ?>
           <form method="post" action="/devices" data-keep>
             <input type="hidden" name="csrf" value="<?= $csrf ?>">
             <input type="hidden" name="action" value="toggle">
@@ -421,6 +635,7 @@ function page_devices(array $admin, string $flash = ''): void {
             <input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
             <button class="danger">Excluir</button>
           </form>
+          <?php endif; ?>
         </td>
       </tr>
     <?php endforeach;
@@ -460,9 +675,14 @@ function page_devices(array $admin, string $flash = ''): void {
     <p class="muted">
       O <strong>nome</strong> e a <strong>estrela</strong> são seus: cada conta do
       painel tem os próprios, e o que você escrever aqui não muda a lista dos outros.
+      <?php if ($isAdm): ?>
       Já <strong>inativar</strong> vale para todo mundo — tira o PC da lista sem
       apagar nada, e ele continua inativo mesmo que volte a se conectar, até ser
       reativado aqui.
+      <?php else: ?>
+      Inativar e excluir dispositivos são ações de administrador: esta lista mostra
+      só os dispositivos ativos.
+      <?php endif; ?>
     </p></div>
     <script>
     // Olho da senha: por delegacao, porque o olho do popup nasce depois do load.
@@ -557,18 +777,20 @@ function page_devices(array $admin, string $flash = ''): void {
       var q  = document.getElementById('f-q'),
           st = document.getElementById('f-status'),
           fv = document.getElementById('f-fav'),
+          // Nao existe para o perfil Tecnico: a lista dele ja vem so com ativos.
           si = document.getElementById('f-sit'),
+          siVal = function () { return si ? si.value : ''; },
           cnt = document.getElementById('dev-count'),
           none = document.getElementById('no-match'),
           rows = [].slice.call(document.querySelectorAll('#dev-tbody tr[data-search]'));
 
       function apply() {
-        var term = q.value.trim().toLowerCase(), n = 0;
+        var term = q.value.trim().toLowerCase(), sv = siVal(), n = 0;
         rows.forEach(function (r) {
           var ok = (term === '' || r.dataset.search.indexOf(term) !== -1)
                 && (st.value === '' || st.value === r.dataset.online)
                 && (fv.value === '' || fv.value === r.dataset.fav)
-                && (si.value === '' || si.value === r.dataset.active);
+                && (sv === '' || sv === r.dataset.active);
           r.style.display = ok ? '' : 'none';
           if (ok) n++;
         });
@@ -579,17 +801,20 @@ function page_devices(array $admin, string $flash = ''): void {
         if (term) p.set('q', q.value.trim());
         if (st.value) p.set('status', st.value);
         if (fv.value) p.set('fav', fv.value);
-        if (si.value !== '1') p.set('sit', si.value === '' ? 'all' : si.value);
+        if (si && sv !== '1') p.set('sit', sv === '' ? 'all' : sv);
         var s = p.toString();
         history.replaceState(null, '', '/devices' + (s ? '?' + s : ''));
       }
 
       [q, st, fv, si].forEach(function (el) {
+        if (!el) return;
         el.addEventListener('input', apply);
         el.addEventListener('change', apply);
       });
       document.getElementById('f-clear').addEventListener('click', function () {
-        q.value = ''; st.value = ''; fv.value = ''; si.value = '1'; apply();
+        q.value = ''; st.value = ''; fv.value = '';
+        if (si) si.value = '1';
+        apply();
       });
       // As acoes voltam para /devices com os mesmos filtros na query string
       // (o PHP le $_GET tambem em POST), entao a tela reaparece como estava.
@@ -628,7 +853,12 @@ function device_action(array $admin): void {
             prune_device_pref($aid, $id);
             page_devices($admin, $v === null ? 'Nome removido.' : 'Nome salvo.'); return;
         }
-        // Inativar e excluir sao globais: valem para todos os admins.
+        // Inativar e excluir sao globais: valem para todos os admins, e por isso
+        // so administrador executa. Checagem aqui, e nao so no HTML, porque o
+        // POST pode vir forjado.
+        if ($action === 'toggle' || $action === 'delete') {
+            if (!is_panel_admin($admin)) { deny_page(); return; }
+        }
         if ($action === 'toggle') {
             $pdo->prepare('UPDATE devices SET active = 1 - active WHERE id = ?')->execute([$id]);
             page_devices($admin, 'Situação do dispositivo atualizada.'); return;
@@ -810,24 +1040,20 @@ function clean_ip(?string $ip): string {
 // ===========================================================================
 function layout(string $body, array $admin, string $active, string $title): void {
     $brand = e(PANEL_BRAND);
-    $nav = [
-        'dashboard'   => ['/',            'Visão geral'],
-        'operators'   => ['/operators',   'Operadores'],
-        'devices'     => ['/devices',     'Dispositivos'],
-        'connections' => ['/connections', 'Conexões'],
-        'audit'       => ['/audit',       'Auditoria'],
-        'settings'    => ['/settings',    'Configurações'],
-    ];
+    $isAdm = is_panel_admin($admin);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><html lang="pt-br"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width,initial-scale=1">';
     echo '<title>' . e($title) . ' · ' . $brand . '</title><link rel="stylesheet" href="/assets/app.css"></head><body>';
     echo '<aside class="side"><div class="brand">' . $brand . '<span>suporte</span></div><nav>';
-    foreach ($nav as $k => [$href, $label]) {
+    foreach (panel_nav() as $k => [$href, $label, $adminOnly]) {
+        if ($adminOnly && !$isAdm) continue;
         $cls = $k === $active ? ' class="active"' : '';
         echo "<a href=\"$href\"$cls>" . e($label) . '</a>';
     }
-    echo '</nav><div class="side-foot">' . e($admin['username']) . '<br><a href="/logout">sair</a></div></aside>';
+    echo '</nav><div class="side-foot">' . e($admin['username'])
+       . '<br><span class="muted-inline">' . e(role_label($admin['role'] ?? null)) . '</span>'
+       . '<br><a href="/logout">sair</a></div></aside>';
     echo '<main><header class="topbar"><h1>' . e($title) . '</h1></header><div class="content">' . $body . '</div></main>';
     echo '</body></html>';
 }

@@ -109,6 +109,19 @@ if (col_exists('devices', 'alias') || col_exists('devices', 'favorite')) {
     echo "  · devices não tem alias/favorite globais (ok)\n";
 }
 
+// --- 5. Perfil das contas do painel -----------------------------------------
+// O default e 'tecnico' (menor privilegio para qualquer INSERT que esqueca a
+// coluna); o UPDATE logo em seguida promove quem ja existia, porque ate aqui
+// toda conta do painel era administradora de fato.
+if (!col_exists('admins', 'role')) {
+    run("ALTER TABLE admins ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'tecnico'",
+        'admins: role');
+    run("UPDATE admins SET role = 'admin'",
+        'admins: contas existentes viram Administrador');
+} else {
+    echo "  · admins.role já existe\n";
+}
+
 echo $did === 0
     ? "\nBanco já estava atualizado — nada a fazer.\n"
     : ($dry ? "\n$did passo(s) seriam aplicados. Rode sem --dry-run.\n" : "\n$did passo(s) aplicados.\n");

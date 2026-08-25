@@ -2,11 +2,16 @@
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
+-- Contas que entram NESTE painel (nao confundir com operators, que sao as contas
+-- do app Operador). O perfil decide o que a pessoa ve: 'admin' ve tudo,
+-- 'tecnico' so ve a visao geral e a lista de dispositivos, sem poder inativar
+-- nem excluir. O default e o menor privilegio, de proposito.
 CREATE TABLE IF NOT EXISTS admins (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(64) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(128) NULL,
+  role VARCHAR(16) NOT NULL DEFAULT 'tecnico',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_login DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

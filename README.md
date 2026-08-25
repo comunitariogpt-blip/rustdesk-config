@@ -181,8 +181,9 @@ FLUSH PRIVILEGES;
 > ```
 >
 > Ele é idempotente (pode rodar quantas vezes quiser) e cobre a senha de
-> conexão (`conn_password`), a inativação de dispositivos (`devices.active`) e
-> os apelidos/favoritos por admin (`device_prefs`).
+> conexão (`conn_password`), a inativação de dispositivos (`devices.active`),
+> os apelidos/favoritos por admin (`device_prefs`) e o perfil das contas do
+> painel (`admins.role` — veja a seção 3.4.1).
 
 ### 2.3 Importar o schema
 
@@ -306,6 +307,39 @@ php panel/seed_admin.php <usuario> [senha]
 
 Se a senha for omitida, uma aleatória é gerada e exibida no terminal. Esse script
 usa o `secrets.env` para acessar o banco, então configure-o antes (seção 3.2).
+
+A conta criada (ou redefinida) por aqui sai sempre com perfil **Administrador** —
+é o *break-glass* para recuperar o acesso. Do segundo usuário em diante, use a
+tela **Usuários** dentro do painel, sem precisar de shell.
+
+### 3.4.1 Perfis de acesso
+
+As contas do painel têm dois perfis, definidos por quem cadastra:
+
+| Recurso                                                  | Administrador | Técnico |
+|----------------------------------------------------------|---------------|---------|
+| Visão geral e Dispositivos                               | ✔             | ✔       |
+| Ver a senha de conexão e os Detalhes do dispositivo      | ✔             | ✔       |
+| Apelido (✎) e favorito (★) — cada conta tem os seus      | ✔             | ✔       |
+| Inativar / excluir dispositivo (vale para todos)         | ✔             | ✖       |
+| Usuários, Operadores, Conexões, Auditoria, Configurações | ✔             | ✖       |
+
+O Técnico enxerga apenas os dispositivos **ativos**, e as telas restritas
+respondem **403** para ele mesmo se a URL for digitada à mão — a checagem é no
+servidor, não só no menu. Um usuário não pode alterar o próprio perfil nem se
+excluir, o que garante que sempre reste ao menos um administrador.
+
+> Não confunda **Usuários** (quem entra neste painel, tabela `admins`) com
+> **Operadores** (quem entra no app Operador do RustDesk, tabela `operators`) —
+> são cadastros separados, cada um na sua tela.
+
+Ao atualizar um painel que já existia, rode o migrador para criar a coluna
+`admins.role`; as contas que já existiam viram Administrador:
+
+```bash
+php panel/migrate.php --dry-run
+php panel/migrate.php
+```
 
 ### 3.5 Acessar
 

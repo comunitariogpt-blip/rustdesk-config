@@ -14,11 +14,16 @@ $hash = password_hash($pass, PASSWORD_BCRYPT);
 $pdo = db();
 $st = $pdo->prepare('SELECT id FROM admins WHERE username = ?');
 $st->execute([$user]);
+// Este script e o break-glass: a conta que ele toca sai sempre com perfil
+// 'admin', senao um banco novo nasceria sem ninguem capaz de administrar (a
+// coluna role tem default 'tecnico').
 if ($st->fetchColumn()) {
-    $pdo->prepare('UPDATE admins SET password_hash = ? WHERE username = ?')->execute([$hash, $user]);
+    $pdo->prepare("UPDATE admins SET password_hash = ?, role = 'admin' WHERE username = ?")
+        ->execute([$hash, $user]);
     echo "Admin '$user' atualizado.\n";
 } else {
-    $pdo->prepare('INSERT INTO admins (username, password_hash, name, created_at) VALUES (?,?,?,UTC_TIMESTAMP())')
+    $pdo->prepare("INSERT INTO admins (username, password_hash, name, role, created_at)
+                   VALUES (?,?,?,'admin',UTC_TIMESTAMP())")
         ->execute([$user, $hash, $user]);
     echo "Admin '$user' criado.\n";
 }

@@ -32,6 +32,21 @@ function require_admin(): array {
     return $a;
 }
 
+// ---------------------------------------------------------------------------
+// Perfil da conta do painel
+// ---------------------------------------------------------------------------
+// Na duvida a conta e tecnico: qualquer valor estranho (ou uma linha vinda de
+// um banco onde a coluna ainda nao existe) cai no menor privilegio.
+// current_admin() rele a linha do banco a cada request, entao mudar o perfil de
+// alguem vale na hora, sem precisar deslogar a pessoa.
+function is_panel_admin(array $a): bool {
+    return (string)($a['role'] ?? 'tecnico') === 'admin';
+}
+
+function role_label(?string $role): string {
+    return (string)$role === 'admin' ? 'Administrador' : 'Técnico';
+}
+
 function csrf_token(): string {
     start_admin_session();
     if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(16));
